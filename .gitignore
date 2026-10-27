@@ -1,0 +1,14 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Build artifacts
+NXNativeGUI
+*.app
+*.zip
+*.dmg
+build/
+*.o
+*.dSYM/
+*.bak

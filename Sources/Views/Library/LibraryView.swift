@@ -143,6 +143,12 @@ struct LibraryView: View {
         Button(tr("Spielstand importieren …", "Import Save…")) { importSave(for: game) }
         Button(tr("Spielstand-Ordner öffnen", "Open Save Folder")) { SaveGameImporter.openSaveFolder(titleId: game.titleId) }
         Divider()
+        Button(tr("Spiel-Protokoll öffnen", "Open Game Log")) { FilePanels.openInFinder(game.logPath) }
+            .disabled(!GameDiagnostics.hasLog(game))
+        Button(tr("Protokoll des vorherigen Starts öffnen", "Open Log of Previous Launch")) { FilePanels.openInFinder(game.previousLogPath) }
+            .disabled(!GameDiagnostics.hasPreviousLog(game))
+        Button(tr("Fehlerbericht erstellen …", "Create Bug Report…")) { createBugReport(for: game) }
+        Divider()
         Button(tr("Im Finder zeigen", "Show in Finder")) { FilePanels.revealInFinder(game.path) }
     }
 
@@ -171,6 +177,25 @@ struct LibraryView: View {
             : tr("In der Auswahl wurden keine Speicherdaten gefunden.", "No save data was found in the selection.")
         alert.alertStyle = result.copiedCount > 0 ? .informational : .warning
         alert.runModal()
+    }
+
+    private func createBugReport(for game: InstalledGame) {
+        GameDiagnostics.createBugReport(for: game) { result in
+            let alert = NSAlert()
+            switch result {
+            case let .created(path):
+                alert.messageText = tr("Fehlerbericht erstellt", "Bug Report Created")
+                alert.informativeText = tr("Die ZIP-Datei enthält Protokolle und Build-Informationen, aber keine Spieldaten oder Schlüssel. Hänge sie an ein Issue bei nxnative an.",
+                                           "The zip file contains logs and build information, but no game data or keys. Attach it to an issue at nxnative.")
+                alert.alertStyle = .informational
+                FilePanels.revealInFinder(path)
+            case let .failed(message):
+                alert.messageText = tr("Fehlerbericht konnte nicht erstellt werden", "Could Not Create Bug Report")
+                alert.informativeText = message
+                alert.alertStyle = .warning
+            }
+            alert.runModal()
+        }
     }
 
     private func addApplications() {

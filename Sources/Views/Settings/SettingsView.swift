@@ -41,9 +41,13 @@ struct GeneralSettingsView: View {
                         Text(language.name).tag(language.code)
                     }
                 }
+                Toggle(tr("Mitteilung, wenn ein Build fertig ist", "Notify When a Build Finishes"), isOn: $prefs.notifyWhenBuildsFinish)
+                    .onChange(of: prefs.notifyWhenBuildsFinish) { _, enabled in
+                        if enabled { Notifier.requestAuthorizationIfNeeded() }
+                    }
             } footer: {
-                Text(tr("Die Spielsprache wird für neue Builds und den Stapel-Import verwendet.",
-                        "The game language is used for new builds and batch imports."))
+                Text(tr("Die Spielsprache wird für neue Builds und den Stapel-Import verwendet. Mitteilungen erscheinen nur, während die App im Hintergrund ist.",
+                        "The game language is used for new builds and batch imports. Notifications appear only while the app is in the background."))
             }
 
             Section {

@@ -128,6 +128,33 @@ struct BuilderView: View {
             if !form.gameDirectory.isEmpty && form.detectedFiles.isEmpty {
                 Text(tr("In diesem Ordner wurden keine .nsp-/.xci-Dateien gefunden.", "No .nsp / .xci files were found in this folder."))
                     .foregroundStyle(.orange)
+            } else if !form.detectedFiles.isEmpty {
+                sourceFooter
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var sourceFooter: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if form.hasPreviousBuild {
+                Label(tr("Ein früherer Build wurde gefunden – nxnative verwendet ihn wieder, der Neubau geht deutlich schneller.",
+                         "A previous build was found – nxnative reuses it, so this build is much faster."),
+                      systemImage: "bolt.fill")
+            }
+            if let space = form.diskSpace {
+                if space.isSufficient {
+                    Text(tr("Freier Speicher: \(DiskSpaceEstimate.format(space.available)) (benötigt etwa \(DiskSpaceEstimate.format(space.required)))",
+                            "Free space: \(DiskSpaceEstimate.format(space.available)) (about \(DiskSpaceEstimate.format(space.required)) needed)"))
+                } else {
+                    Label(form.hasPreviousBuild
+                          ? tr("Wenig Speicher frei: \(DiskSpaceEstimate.format(space.available)). Ein erster Build braucht etwa \(DiskSpaceEstimate.format(space.required)); ein Neubau meist deutlich weniger.",
+                               "Low disk space: \(DiskSpaceEstimate.format(space.available)). A first build needs about \(DiskSpaceEstimate.format(space.required)); a rebuild usually much less.")
+                          : tr("Zu wenig Speicher frei: \(DiskSpaceEstimate.format(space.available)) – der Build braucht etwa \(DiskSpaceEstimate.format(space.required)) (doppelte Spielgröße + 10 GB).",
+                               "Not enough disk space: \(DiskSpaceEstimate.format(space.available)) – the build needs about \(DiskSpaceEstimate.format(space.required)) (twice the game size + 10 GB)."),
+                          systemImage: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                }
             }
         }
     }
@@ -298,9 +325,23 @@ struct BuildProgressView: View {
             }
 
             if let error = manager.errorMessage {
-                Label(error, systemImage: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.red)
+                Label(error, systemImage: manager.wasCancelled ? "stop.circle.fill" : "exclamationmark.triangle.fill")
+                    .foregroundStyle(manager.wasCancelled ? Color.secondary : Color.red)
                     .textSelection(.enabled)
+            }
+
+            if let logsPath = manager.buildLogsPath {
+                HStack {
+                    Text(tr("Die vollständige Ausgabe aller Werkzeuge liegt im Build-Ordner.",
+                            "The complete output of all tools is in the build folder."))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button(tr("Build-Logs öffnen", "Open Build Logs")) {
+                        FilePanels.openInFinder(logsPath)
+                    }
+                    .controlSize(.small)
+                }
             }
 
             DisclosureGroup(isExpanded: $showLog) {
@@ -330,6 +371,10 @@ struct BuildProgressView: View {
             Label(tr("Build erfolgreich abgeschlossen", "Build completed successfully"), systemImage: "checkmark.seal.fill")
                 .font(.headline)
                 .foregroundStyle(.green)
+        } else if manager.wasCancelled {
+            Label(tr("Build abgebrochen", "Build cancelled"), systemImage: "stop.circle")
+                .font(.headline)
+                .foregroundStyle(.secondary)
         } else if manager.isFinished {
             Label(tr("Build fehlgeschlagen", "Build failed"), systemImage: "xmark.octagon.fill")
                 .font(.headline)

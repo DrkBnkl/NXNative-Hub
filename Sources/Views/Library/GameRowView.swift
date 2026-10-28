@@ -32,8 +32,10 @@ struct GameRowView: View {
                 .foregroundStyle(.secondary)
 
                 HStack(spacing: 4) {
-                    BadgeView(text: "\(game.fpsTarget) FPS", color: game.fpsTarget == "60" ? .green : .blue)
-                    BadgeView(text: game.isDocked ? "Docked 1080p" : "Handheld 720p", color: .purple)
+                    if !game.fpsTarget.isEmpty {
+                        BadgeView(text: "\(game.fpsTarget) FPS", color: game.fpsTarget == "60" ? .green : .blue)
+                    }
+                    BadgeView(text: game.isDocked ? "Docked" : "Handheld", color: .purple)
                     if game.upscaling == "metalfx" {
                         BadgeView(text: "MetalFX", color: .orange)
                     }

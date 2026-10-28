@@ -140,8 +140,16 @@ final class GameLibraryManager: ObservableObject {
             let size = folderSize(url: resolved, cache: &sizeCache)
             usedCacheKeys.insert(resolved.path)
 
-            // Current game settings for the badges
-            let env = EnvFile.load(path: NXPaths.envFilePath(titleId: info.titleId))?.values ?? [:]
+            // Current game settings for the badges: what the game will use at launch
+            // (settings list: env.txt → saved choice → tested default; older builds: env.txt only).
+            var env = EnvFile.load(path: NXPaths.envFilePath(titleId: info.titleId))?.values ?? [:]
+            let list = LauncherSettingsList.load(appPath: resolved.path)
+            if let list = list {
+                let bundleEnv = EnvFile.load(path: NXPaths.bundleEnvFilePath(appPath: resolved.path))?.values ?? [:]
+                env.merge(GameSettingsResolver.effectiveValues(list: list, envValues: env,
+                                                               bundleEnvValues: bundleEnv,
+                                                               bundleId: info.bundleId)) { _, effective in effective }
+            }
 
             result.append(InstalledGame(
                 id: info.titleId,
@@ -150,11 +158,13 @@ final class GameLibraryManager: ObservableObject {
                 version: info.version,
                 path: resolved.path,
                 sizeFormatted: ByteCountFormatter.string(fromByteCount: size, countStyle: .file),
-                fpsTarget: env["DM_FPS_TARGET"] ?? "60",
+                // A listed game without a frame-rate row has no FPS choice: no badge ("").
+                fpsTarget: env["DM_FPS_TARGET"] ?? (list == nil ? "60" : ""),
                 isDocked: (env["DM_OPMODE"] ?? "1") == "1",
-                upscaling: env["DM_PRESENT_UPSCALE"] ?? "metalfx",
+                upscaling: env["DM_PRESENT_UPSCALE"] ?? (list == nil ? "metalfx" : "off"),
                 isFullscreen: env["DM_FULLSCREEN"] == "1",
-                language: env["DM_LANG"] ?? ""
+                language: env["DM_LANG"] ?? "",
+                hasSettingsList: list != nil
             ))
         }
 

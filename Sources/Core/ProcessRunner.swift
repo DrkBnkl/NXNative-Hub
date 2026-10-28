@@ -88,7 +88,9 @@ final class StreamingProcess {
 
         let group = outputGroup
         process.terminationHandler = { [weak self] proc in
-            let status = proc.terminationStatus
+            // A process killed by a signal reports the signal number; map it to the shell
+            // convention 128 + signal, so it cannot be mistaken for an exit code (2 = SIGINT!).
+            let status = proc.terminationReason == .uncaughtSignal ? 128 + proc.terminationStatus : proc.terminationStatus
             group.notify(queue: .main) {
                 self?.onExit?(status)
             }

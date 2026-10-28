@@ -99,6 +99,11 @@ struct InstalledGame: Identifiable, Hashable {
     var upscaling: String
     var isFullscreen: Bool
     var language: String
+    /// Built with a current nxnative that ships launcher.json (settings list, saved choices).
+    var hasSettingsList: Bool
+
+    var logPath: String { NXPaths.gameLogPath(titleId: titleId) }
+    var previousLogPath: String { NXPaths.previousGameLogPath(titleId: titleId) }
 
     var icon: NSImage {
         NSWorkspace.shared.icon(forFile: path)
@@ -110,6 +115,8 @@ struct GameBundleInfo {
     let titleId: String
     let name: String
     let version: String
+    /// Preferences domain of the game's own launcher (saved choices), e.g. `org.nxnative.0100…`.
+    let bundleId: String
 
     init?(appPath: String) {
         let plistURL = URL(fileURLWithPath: appPath).appendingPathComponent("Contents/Info.plist")
@@ -119,6 +126,7 @@ struct GameBundleInfo {
         self.titleId = tid
         self.name = (plist["CFBundleName"] as? String) ?? URL(fileURLWithPath: appPath).deletingPathExtension().lastPathComponent
         self.version = (plist["CFBundleShortVersionString"] as? String) ?? "1.0"
+        self.bundleId = (plist["CFBundleIdentifier"] as? String) ?? "org.nxnative.\(tid.lowercased())"
     }
 }
 
@@ -159,6 +167,7 @@ struct DetectedGameFile: Identifiable {
     let id = UUID()
     let name: String
     let path: String
+    let sizeBytes: Int64
     let sizeFormatted: String
     let kind: Kind
 
@@ -167,6 +176,7 @@ struct DetectedGameFile: Identifiable {
         self.path = url.path
 
         let size = Int64((try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0)
+        self.sizeBytes = size
         self.sizeFormatted = ByteCountFormatter.string(fromByteCount: size, countStyle: .file)
 
         // Heuristic based on the common file name pattern "Name [TitleID][vXXXX].nsp"

@@ -5,6 +5,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+- Setup check matches nxnative's requirements: full Xcode, Homebrew `xcodegen` and `zstd`, .NET SDK 10, Python 3.12+ with `backports.zstd` (instead of `zstandard`).
+- The venv is optional: `python3` from the PATH is used if the nxnative folder has none. Without a venv, missing packages are installed into a new one.
+- Missing Homebrew tools can be installed from the setup check.
+- The updater no longer rebuilds `nx_extract` (the build script does) and updates Python packages only inside a venv.
+
+### Fixed
+- `DOTNET_ROOT` was forced to `~/.dotnet`, which broke builds with .NET installed via Homebrew.
+- "Keep extracted data" turned off had no effect.
+
 ## [1.1.0] – 2026-10-27
 
 ### Added

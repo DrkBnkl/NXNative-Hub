@@ -35,13 +35,13 @@ A single `Window` is used on purpose: the app manages one build and import state
 
 | Tool | Called by | Via |
 |---|---|---|
-| `venv/bin/python3 scripts/build_ipa_from_nsp.py … --progress json` | `BuildManager`, `ImportBatchManager` | `StreamingProcess` (line-based, main-thread callbacks) |
-| `git`, `pip`, `dotnet` | `UpdateManager` | `CommandRunner` |
+| `python3 scripts/build_ipa_from_nsp.py … --progress json` (repo venv if present) | `BuildManager`, `ImportBatchManager` | `StreamingProcess` (line-based, main-thread callbacks) |
+| `git`, `pip` | `UpdateManager` | `CommandRunner` |
 | `ps` | `ActiveBuildMonitor` (every 2.5 s, also detects builds started in Terminal) | `CommandRunner` |
-| `xcode-select`, `python3 -m venv`, `pip` | `SetupChecker` | `CommandRunner` |
+| `xcodebuild`, `dotnet --list-sdks`, `brew install`, `python3 -m venv`, `pip` | `SetupChecker` | `CommandRunner` |
 | `ditto` | `SaveGameImporter` (zip extraction) | `CommandRunner` |
 
-Executables are always started with argument arrays, never through a shell. The build script reports progress as JSON lines, parsed by `BuildEvent`.
+Executables are always started with argument arrays, never through a shell. `DOTNET_ROOT` is not set by the app; nxnative derives it from `dotnet --list-runtimes`. The build script reports progress as JSON lines, parsed by `BuildEvent`.
 
 ## Files and settings
 

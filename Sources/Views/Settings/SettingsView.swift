@@ -103,8 +103,8 @@ struct GeneralSettingsView: View {
             } header: {
                 Text("nxnative")
             } footer: {
-                Text(tr("Automatisch: ~/NXNative/nxnative. Der Ordner muss scripts/build_ipa_from_nsp.py und venv/ enthalten – Details im Tab „Einrichtung“.",
-                        "Automatic: ~/NXNative/nxnative. The folder must contain scripts/build_ipa_from_nsp.py and venv/ – see the “Setup” tab for details."))
+                Text(tr("Automatisch: ~/NXNative/nxnative. Der Ordner muss scripts/build_ipa_from_nsp.py enthalten – Details im Tab „Einrichtung“.",
+                        "Automatic: ~/NXNative/nxnative. The folder must contain scripts/build_ipa_from_nsp.py – see the “Setup” tab for details."))
             }
         }
         .formStyle(.grouped)

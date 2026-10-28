@@ -9,7 +9,8 @@ final class BuilderFormModel: ObservableObject {
     @Published var platform: TargetPlatform = .macApp
     @Published var language: String = AppPreferences.shared.defaultGameLanguage
     @Published var showFps = false
-    @Published var keepExtracted = false
+    /// Matches nxnative's default: extracted files are kept for faster rebuilds.
+    @Published var keepExtracted = true
     @Published var appName = ""
     @Published private(set) var detectedFiles: [DetectedGameFile] = []
 

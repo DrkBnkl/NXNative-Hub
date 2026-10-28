@@ -4,7 +4,9 @@ There are no automated tests. Before a release – or after changes to the affec
 
 ## Launch and setup
 - [ ] Without nxnative, the setup sheet opens at launch; with a complete installation it does not.
-- [ ] "Create venv" and "Install" (Python packages) succeed and the checks turn green.
+- [ ] Xcode, Homebrew tools, .NET SDK 10 and Python 3.12+ are detected; missing items are reported.
+- [ ] Without a venv, "Create venv & Install" creates `<nxnative>/venv` and installs the packages; with a venv, "Install" adds missing packages.
+- [ ] "Install" for Homebrew tools installs `xcodegen` / `zstd`.
 - [ ] Settings → General → nxnative: a custom folder is used; choosing `~/NXNative` resolves to `~/NXNative/nxnative`; "Automatic" restores the default.
 - [ ] Help → Check Setup… opens the checklist; the sidebar hint disappears once everything is ready.
 
@@ -21,6 +23,8 @@ There are no automated tests. Before a release – or after changes to the affec
 ## Builder
 - [ ] Choosing or dropping a folder lists the detected game files.
 - [ ] Build (⌘R) shows progress with integer counts; Cancel stops it.
+- [ ] With .NET installed via Homebrew, a build succeeds (DOTNET_ROOT is not overridden).
+- [ ] "Keep extracted data" off removes the extracted files after the build.
 - [ ] After success: Launch, Settings and Show in Finder work.
 
 ## Batch import
@@ -32,5 +36,5 @@ There are no automated tests. Before a release – or after changes to the affec
 - [ ] A game without a produced `.app` keeps its source files and is reported as failed.
 
 ## Updates and monitoring
-- [ ] The update check lists new commits; "Update Now" completes even with long pip/dotnet output.
+- [ ] The update check lists new commits; "Update Now" completes even with long pip output.
 - [ ] A build started in Terminal appears in the banner; "Live Log" shows its output.

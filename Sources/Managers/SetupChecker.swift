@@ -2,9 +2,10 @@ import Foundation
 
 // MARK: - Setup check (prerequisites for building games)
 //
-// Verifies everything the app depends on but does not ship itself: Command Line Tools,
-// git, the nxnative repo with its venv and Python packages, prod.keys and (optionally) .NET.
-// Checks run on a background queue; some issues can be fixed with one click.
+// Verifies what nxnative's build_ipa_from_nsp.py needs but the app does not ship:
+// Xcode, git, Homebrew tools (xcodegen, zstd), .NET SDK 10, the nxnative repo,
+// Python 3.12+ with lz4 / capstone / fonttools / backports.zstd, and prod.keys.
+// Checks run on a background queue; several issues can be fixed with one click.
 
 struct SetupCheck: Identifiable, Equatable {
     enum Status: Equatable {
@@ -15,10 +16,11 @@ struct SetupCheck: Identifiable, Equatable {
 
     enum Fix: Equatable {
         case chooseRepoFolder
+        case chooseProdKeys
+        case openXcodeInAppStore
+        case installHomebrewPackages([String])
         case createVenv
         case installPythonPackages
-        case installCommandLineTools
-        case chooseProdKeys
     }
 
     let id: String
@@ -37,6 +39,11 @@ final class SetupChecker: ObservableObject {
 
     private let queue = DispatchQueue(label: "org.nxnative.setupCheck", qos: .userInitiated)
     private var pendingCompletions: [() -> Void] = []
+
+    /// Homebrew formulae the build script calls.
+    static let homebrewTools = ["xcodegen", "zstd"]
+    /// Required .NET SDK major version.
+    static let requiredDotnetMajor = 10
 
     /// At least one required prerequisite is missing.
     var hasBlockingIssues: Bool { checks.contains { $0.status == .missing } }
@@ -65,35 +72,92 @@ final class SetupChecker: ObservableObject {
     }
 
     private static func evaluate(prodKeysExists: Bool) -> [SetupCheck] {
-        let fm = FileManager.default
-        var results: [SetupCheck] = []
+        var results = [xcodeCheck(), gitCheck(), homebrewToolsCheck(), dotnetCheck()]
+        results += repoChecks()
+        results.append(prodKeysCheck(exists: prodKeysExists))
+        return results
+    }
 
-        // Xcode Command Line Tools (swiftc, codesign, git shim, metal toolchain)
-        let clt = CommandRunner.run("/usr/bin/xcode-select", ["-p"])
-        results.append(SetupCheck(
-            id: "clt",
-            title: tr("Xcode Command Line Tools", "Xcode Command Line Tools"),
-            detail: clt.succeeded ? clt.trimmedOutput : tr("Nicht installiert", "Not installed"),
-            status: clt.succeeded ? .ok : .missing,
-            fix: clt.succeeded ? nil : .installCommandLineTools))
+    // MARK: Tools
 
-        // git
+    private static func xcodeCheck() -> SetupCheck {
+        let result = CommandRunner.run("/usr/bin/xcodebuild", ["-version"])
+        let version = result.trimmedOutput.components(separatedBy: "\n").first ?? ""
+        return SetupCheck(
+            id: "xcode",
+            title: "Xcode",
+            detail: result.succeeded
+                ? version
+                : tr("Das vollständige Xcode wird benötigt (die Command Line Tools reichen nicht). Nach der Installation Xcode einmal starten bzw. mit „sudo xcode-select -s /Applications/Xcode.app“ auswählen.",
+                     "The full Xcode is required (the Command Line Tools are not enough). After installing, launch Xcode once or select it with “sudo xcode-select -s /Applications/Xcode.app”."),
+            status: result.succeeded ? .ok : .missing,
+            fix: result.succeeded ? nil : .openXcodeInAppStore)
+    }
+
+    private static func gitCheck() -> SetupCheck {
         let git = CommandRunner.tool("git", ["--version"])
-        results.append(SetupCheck(
+        return SetupCheck(
             id: "git",
             title: "git",
-            detail: git.succeeded ? git.trimmedOutput : tr("Nicht gefunden – wird mit den Command Line Tools installiert", "Not found – installed with the Command Line Tools"),
+            detail: git.succeeded ? git.trimmedOutput : tr("Nicht gefunden – wird mit Xcode installiert", "Not found – installed with Xcode"),
             status: git.succeeded ? .ok : .missing,
-            fix: nil))
+            fix: nil)
+    }
 
-        // nxnative folder
+    private static func homebrewToolsCheck() -> SetupCheck {
+        let missing = homebrewTools.filter { NXPaths.which($0) == nil }
+        let hasBrew = NXPaths.which("brew") != nil
+        let detail: String
+        if missing.isEmpty {
+            detail = homebrewTools.joined(separator: ", ")
+        } else if hasBrew {
+            detail = tr("Fehlt: \(missing.joined(separator: ", "))", "Missing: \(missing.joined(separator: ", "))")
+        } else {
+            detail = tr("Fehlt: \(missing.joined(separator: ", ")). Installiere zuerst Homebrew (brew.sh).",
+                        "Missing: \(missing.joined(separator: ", ")). Install Homebrew first (brew.sh).")
+        }
+        return SetupCheck(
+            id: "brew",
+            title: tr("Homebrew-Werkzeuge", "Homebrew Tools"),
+            detail: detail,
+            status: missing.isEmpty ? .ok : .missing,
+            fix: (missing.isEmpty || !hasBrew) ? nil : .installHomebrewPackages(missing))
+    }
+
+    private static func dotnetCheck() -> SetupCheck {
+        let title = ".NET SDK \(requiredDotnetMajor)"
+        let hint = tr("Installieren mit „brew install --cask dotnet-sdk“ (fragt nach dem Administratorpasswort).",
+                      "Install with “brew install --cask dotnet-sdk” (asks for the administrator password).")
+        guard let dotnet = NXPaths.dotnetExecutable else {
+            return SetupCheck(id: "dotnet", title: title, detail: tr("Nicht gefunden. ", "Not found. ") + hint, status: .missing, fix: nil)
+        }
+        // Output lines look like "10.0.100 [/usr/local/share/dotnet/sdk]".
+        let sdks = CommandRunner.run(dotnet, ["--list-sdks"]).output
+            .split(separator: "\n")
+            .compactMap { $0.split(separator: " ").first.map(String.init) }
+        let suitable = sdks.filter { (Int($0.split(separator: ".").first ?? "") ?? 0) >= requiredDotnetMajor }
+        return SetupCheck(
+            id: "dotnet",
+            title: title,
+            detail: suitable.isEmpty
+                ? tr("Gefunden: \(sdks.isEmpty ? "keine SDKs" : sdks.joined(separator: ", ")). ", "Found: \(sdks.isEmpty ? "no SDKs" : sdks.joined(separator: ", ")). ") + hint
+                : suitable.joined(separator: ", "),
+            status: suitable.isEmpty ? .missing : .ok,
+            fix: nil)
+    }
+
+    // MARK: nxnative repo and Python
+
+    private static func repoChecks() -> [SetupCheck] {
+        let fm = FileManager.default
         let repo = NXPaths.repoPath
         var isDir: ObjCBool = false
         let repoExists = fm.fileExists(atPath: repo, isDirectory: &isDir) && isDir.boolValue
         let locationNote = NXPaths.customRepoPath != nil
             ? tr("Eigener Ordner", "Custom folder")
             : tr("Automatisch erkannt", "Detected automatically")
-        results.append(SetupCheck(
+
+        var results = [SetupCheck(
             id: "repo",
             title: tr("nxnative-Ordner", "nxnative Folder"),
             detail: repoExists
@@ -101,19 +165,15 @@ final class SetupChecker: ObservableObject {
                 : tr("Nicht gefunden unter \(repo). Installiere nxnative per git clone oder wähle den Ordner aus.",
                      "Not found at \(repo). Install nxnative with git clone or choose its folder."),
             status: repoExists ? .ok : .missing,
-            fix: .chooseRepoFolder))
+            fix: .chooseRepoFolder)]
 
         guard repoExists else {
-            // Everything below lives inside the repo.
             let pending = tr("Erst den nxnative-Ordner einrichten", "Set up the nxnative folder first")
             results.append(SetupCheck(id: "script", title: tr("Build-Skript", "Build Script"), detail: pending, status: .missing, fix: nil))
-            results.append(SetupCheck(id: "venv", title: tr("Python-Umgebung (venv)", "Python Environment (venv)"), detail: pending, status: .missing, fix: nil))
-            results.append(prodKeysCheck(exists: prodKeysExists))
-            results.append(dotnetCheck())
+            results.append(SetupCheck(id: "python", title: "Python", detail: pending, status: .missing, fix: nil))
             return results
         }
 
-        // git clone (needed by the updater)
         let isGitClone = fm.fileExists(atPath: "\(repo)/.git")
         results.append(SetupCheck(
             id: "gitclone",
@@ -124,7 +184,6 @@ final class SetupChecker: ObservableObject {
             status: isGitClone ? .ok : .warning,
             fix: nil))
 
-        // Build script
         let scriptExists = fm.fileExists(atPath: NXPaths.buildScriptPath)
         results.append(SetupCheck(
             id: "script",
@@ -133,7 +192,6 @@ final class SetupChecker: ObservableObject {
             status: scriptExists ? .ok : .missing,
             fix: scriptExists ? nil : .chooseRepoFolder))
 
-        // Game profiles
         let profileCount = ((try? fm.contentsOfDirectory(atPath: NXPaths.profileDirectory)) ?? [])
             .filter { SwitchTitleID.normalized($0) != nil }
             .count
@@ -146,32 +204,46 @@ final class SetupChecker: ObservableObject {
             status: profileCount > 0 ? .ok : .warning,
             fix: nil))
 
-        // venv
-        let pythonExists = fm.isExecutableFile(atPath: NXPaths.pythonPath)
-        results.append(SetupCheck(
-            id: "venv",
-            title: tr("Python-Umgebung (venv)", "Python Environment (venv)"),
-            detail: pythonExists
-                ? pythonVersion(at: NXPaths.pythonPath).map { "Python \($0) – venv/" } ?? "venv/"
-                : tr("Fehlt: \(NXPaths.venvPath)", "Missing: \(NXPaths.venvPath)"),
-            status: pythonExists ? .ok : .missing,
-            fix: pythonExists ? nil : .createVenv))
+        results += pythonChecks()
+        return results
+    }
 
-        // Python packages
-        if pythonExists {
-            let missing = missingPythonPackages()
-            results.append(SetupCheck(
-                id: "packages",
-                title: tr("Python-Pakete", "Python Packages"),
-                detail: missing.isEmpty
-                    ? NXPaths.requiredPythonModules.map { $0.package }.joined(separator: ", ")
-                    : tr("Fehlt: \(missing.joined(separator: ", "))", "Missing: \(missing.joined(separator: ", "))"),
-                status: missing.isEmpty ? .ok : .missing,
-                fix: missing.isEmpty ? nil : .installPythonPackages))
+    private static func pythonChecks() -> [SetupCheck] {
+        let python = NXPaths.pythonPath
+        let source = NXPaths.usesVenv ? "venv" : python
+        let required = "\(NXPaths.minimumPython.major).\(NXPaths.minimumPython.minor)"
+
+        guard FileManager.default.isExecutableFile(atPath: python), let version = pythonVersion(at: python) else {
+            return [SetupCheck(
+                id: "python", title: "Python",
+                detail: tr("Kein Python gefunden. Installiere Python \(required) oder neuer, z. B. mit „brew install python“.",
+                           "No Python found. Install Python \(required) or newer, e.g. with “brew install python”."),
+                status: .missing, fix: nil)]
         }
 
-        results.append(prodKeysCheck(exists: prodKeysExists))
-        results.append(dotnetCheck())
+        guard isSupported(version) else {
+            return [SetupCheck(
+                id: "python", title: "Python",
+                detail: tr("Python \(version) (\(source)) ist zu alt – benötigt wird \(required) oder neuer, z. B. „brew install python“.",
+                           "Python \(version) (\(source)) is too old – \(required) or newer is required, e.g. “brew install python”."),
+                status: .missing,
+                // An old venv can be replaced once a suitable Python is installed.
+                fix: NXPaths.usesVenv ? .createVenv : nil)]
+        }
+
+        var results = [SetupCheck(id: "python", title: "Python", detail: "Python \(version) – \(source)", status: .ok, fix: nil)]
+
+        let missing = missingPythonPackages()
+        results.append(SetupCheck(
+            id: "packages",
+            title: tr("Python-Pakete", "Python Packages"),
+            detail: missing.isEmpty
+                ? tr("Vollständig", "Complete")
+                : tr("Fehlt: \(missing.joined(separator: ", "))", "Missing: \(missing.joined(separator: ", "))")
+                    + (NXPaths.usesVenv ? "" : tr(" – wird in einer neuen venv im nxnative-Ordner installiert.", " – will be installed into a new venv in the nxnative folder.")),
+            status: missing.isEmpty ? .ok : .missing,
+            // Homebrew's Python rejects pip outside a venv (PEP 668), so without a venv one is created.
+            fix: missing.isEmpty ? nil : (NXPaths.usesVenv ? .installPythonPackages : .createVenv)))
         return results
     }
 
@@ -186,47 +258,40 @@ final class SetupChecker: ObservableObject {
             fix: exists ? nil : .chooseProdKeys)
     }
 
-    private static func dotnetCheck() -> SetupCheck {
-        let exists = FileManager.default.isExecutableFile(atPath: NXPaths.dotnetExecutable)
-        return SetupCheck(
-            id: "dotnet",
-            title: tr(".NET (optional)", ".NET (optional)"),
-            detail: exists
-                ? NXPaths.dotnetExecutable
-                : tr("Nicht unter ~/.dotnet installiert – nx_extract wird bei Updates nicht neu gebaut.", "Not installed in ~/.dotnet – nx_extract is not rebuilt during updates."),
-            status: exists ? .ok : .warning,
-            fix: nil)
-    }
+    // MARK: Python helpers
 
-    /// "3.12" for the given interpreter, or nil.
+    /// "3.13" for the given interpreter, or nil.
     private static func pythonVersion(at executable: String) -> String? {
         let result = CommandRunner.run(executable, ["-c", "import sys; print('%d.%d' % sys.version_info[:2])"])
         return result.succeeded ? result.trimmedOutput : nil
     }
 
-    /// pip names of required packages the venv cannot import.
+    private static func isSupported(_ version: String) -> Bool {
+        let parts = version.split(separator: ".").compactMap { Int($0) }
+        guard parts.count >= 2 else { return false }
+        return (parts[0], parts[1]) >= (NXPaths.minimumPython.major, NXPaths.minimumPython.minor)
+    }
+
+    /// pip names of required packages the interpreter cannot import.
     private static func missingPythonPackages() -> [String] {
-        let modules = NXPaths.requiredPythonModules.map { $0.module }
-        let script = "import importlib.util, sys; print(' '.join(m for m in sys.argv[1:] if importlib.util.find_spec(m) is None))"
-        let result = CommandRunner.run(NXPaths.pythonPath, ["-c", script] + modules)
-        guard result.succeeded else { return NXPaths.requiredPythonModules.map { $0.package } }
-        let missingModules = Set(result.trimmedOutput.split(separator: " ").map(String.init))
-        return NXPaths.requiredPythonModules.filter { missingModules.contains($0.module) }.map { $0.package }
+        let result = CommandRunner.run(NXPaths.pythonPath, ["-c", NXPaths.missingPythonModulesScript])
+        guard result.succeeded else { return ["lz4", "capstone", "fonttools", "backports.zstd"] }
+        return result.trimmedOutput.split(separator: " ").map(String.init)
     }
 
     // MARK: One-click fixes
 
-    /// Creates `<repo>/venv` with a Python ≥ 3.10 from the PATH and installs the packages.
+    /// (Re)creates `<repo>/venv` with a Python ≥ 3.12 from the PATH and installs the packages.
     func createVenv(prodKeysExists: Bool) {
         runFix(prodKeysExists: prodKeysExists) { log in
-            let version = CommandRunner.tool("python3", ["-c", "import sys; print('%d.%d' % sys.version_info[:2]); sys.exit(0 if sys.version_info >= (3, 10) else 1)"])
-            guard version.succeeded else {
-                log(tr("✗ Python 3.10 oder neuer wird benötigt (gefunden: \(version.trimmedOutput.isEmpty ? "keins" : version.trimmedOutput)). Installiere es z. B. mit „brew install python“.",
-                       "✗ Python 3.10 or newer is required (found: \(version.trimmedOutput.isEmpty ? "none" : version.trimmedOutput)). Install it e.g. with “brew install python”."))
+            guard let python = NXPaths.which("python3"),
+                  let version = Self.pythonVersion(at: python), Self.isSupported(version) else {
+                log(tr("✗ Python \(NXPaths.minimumPython.major).\(NXPaths.minimumPython.minor) oder neuer wird benötigt. Installiere es z. B. mit „brew install python“.",
+                       "✗ Python \(NXPaths.minimumPython.major).\(NXPaths.minimumPython.minor) or newer is required. Install it e.g. with “brew install python”."))
                 return
             }
-            log(tr("Python \(version.trimmedOutput) gefunden – venv wird erstellt …", "Found Python \(version.trimmedOutput) – creating venv…"))
-            let venv = CommandRunner.tool("python3", ["-m", "venv", NXPaths.venvPath])
+            log(tr("Python \(version) gefunden – venv wird erstellt …", "Found Python \(version) – creating venv…"))
+            let venv = CommandRunner.run(python, ["-m", "venv", "--clear", NXPaths.venvPath])
             guard venv.succeeded else {
                 log("✗ venv: \(venv.trimmedOutput)")
                 return
@@ -242,20 +307,21 @@ final class SetupChecker: ObservableObject {
         }
     }
 
-    /// Opens Apple's installer dialog for the Command Line Tools.
-    func installCommandLineTools(prodKeysExists: Bool) {
+    func installHomebrewPackages(_ packages: [String], prodKeysExists: Bool) {
         runFix(prodKeysExists: prodKeysExists) { log in
-            let result = CommandRunner.run("/usr/bin/xcode-select", ["--install"])
-            log(result.succeeded
-                ? tr("Das Installationsfenster von Apple wurde geöffnet. Nach der Installation bitte erneut prüfen.", "Apple's installer window has been opened. Check again after the installation.")
-                : result.trimmedOutput)
+            guard let brew = NXPaths.which("brew") else {
+                log(tr("✗ Homebrew nicht gefunden (brew.sh)", "✗ Homebrew not found (brew.sh)"))
+                return
+            }
+            log("brew install \(packages.joined(separator: " ")) …")
+            let result = CommandRunner.run(brew, ["install"] + packages)
+            log(result.succeeded ? tr("✓ Installiert", "✓ Installed") : "✗ brew: \(result.trimmedOutput)")
         }
     }
 
     private static func installPackages(log: (String) -> Void) {
-        let packages = NXPaths.requiredPythonModules.map { $0.package }
-        log(tr("Python-Pakete werden installiert: \(packages.joined(separator: ", ")) …", "Installing Python packages: \(packages.joined(separator: ", "))…"))
-        let pip = CommandRunner.run(NXPaths.pythonPath, ["-m", "pip", "install", "--upgrade"] + packages)
+        log(tr("Python-Pakete werden installiert …", "Installing Python packages…"))
+        let pip = CommandRunner.run(NXPaths.venvPython, ["-m", "pip", "install", "--upgrade"] + NXPaths.pythonRequirements)
         log(pip.succeeded ? tr("✓ Python-Pakete installiert", "✓ Python packages installed") : "✗ pip: \(pip.trimmedOutput)")
     }
 

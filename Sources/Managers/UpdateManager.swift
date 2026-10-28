@@ -112,7 +112,7 @@ final class UpdateManager: ObservableObject {
 
             // 1. Stash local changes to tracked files – only if there are any and
             //    `stash push` succeeded, so an unrelated older stash is never popped.
-            self.log(tr("[1/4] Lokale Anpassungen sichern (git stash) …", "[1/4] Saving local changes (git stash)…"))
+            self.log(tr("[1/3] Lokale Anpassungen sichern (git stash) …", "[1/3] Saving local changes (git stash)…"))
             let status = CommandRunner.git(repo, "status", "--porcelain", "--untracked-files=no")
             var didStash = false
             if status.succeeded && !status.trimmedOutput.isEmpty {
@@ -123,7 +123,7 @@ final class UpdateManager: ObservableObject {
             }
 
             // 2. Pull
-            self.log(tr("[2/4] Aktualisierungen von GitHub laden …", "[2/4] Downloading updates from GitHub…"))
+            self.log(tr("[2/3] Aktualisierungen von GitHub laden …", "[2/3] Downloading updates from GitHub…"))
             let pull = CommandRunner.git(repo, "pull", "origin", branch)
             self.log(pull.trimmedOutput)
 
@@ -146,23 +146,17 @@ final class UpdateManager: ObservableObject {
                 return
             }
 
-            // 4. Rebuild nx_extract if .NET is installed
-            let dotnet = NXPaths.dotnetExecutable
-            if FileManager.default.fileExists(atPath: dotnet) {
-                self.log(tr("[3/4] nx_extract wird neu kompiliert …", "[3/4] Rebuilding nx_extract…"))
-                let build = CommandRunner.run(dotnet, ["build", NXPaths.nxExtractProject, "-c", "Release"])
-                self.log(build.succeeded ? tr("✓ nx_extract erfolgreich gebaut", "✓ nx_extract built successfully")
-                                         : "[\(tr("Warnung", "Warning"))] nx_extract: \(build.trimmedOutput)")
-            }
-
-            // 5. Upgrade Python packages
-            let pip = NXPaths.pipPath
-            if FileManager.default.fileExists(atPath: pip) {
-                self.log(tr("[4/4] Python-Bibliotheken prüfen (lz4, capstone, fonttools, zstandard) …",
-                            "[4/4] Checking Python libraries (lz4, capstone, fonttools, zstandard)…"))
-                let pipResult = CommandRunner.run(pip, ["install", "--upgrade"] + NXPaths.requiredPythonModules.map { $0.package })
+            // 4. Upgrade the Python packages – only inside a venv, because Homebrew's Python
+            //    rejects `pip install` outside one (PEP 668). nx_extract is rebuilt by the
+            //    build script itself, so it is not rebuilt here.
+            if NXPaths.usesVenv {
+                self.log(tr("[3/3] Python-Pakete werden aktualisiert …", "[3/3] Updating Python packages…"))
+                let pipResult = CommandRunner.run(NXPaths.venvPython, ["-m", "pip", "install", "--upgrade"] + NXPaths.pythonRequirements)
                 self.log(pipResult.succeeded ? tr("✓ Python-Pakete aktuell", "✓ Python packages up to date")
                                              : "[\(tr("Warnung", "Warning"))] pip: \(pipResult.trimmedOutput)")
+            } else {
+                self.log(tr("[3/3] Keine venv – Python-Pakete werden nicht automatisch aktualisiert.",
+                            "[3/3] No venv – Python packages are not updated automatically."))
             }
 
             let newHash = CommandRunner.git(repo, "rev-parse", "--short", "HEAD").trimmedOutput

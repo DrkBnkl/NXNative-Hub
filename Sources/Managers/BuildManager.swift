@@ -19,7 +19,8 @@ struct BuildOptions {
                     "--progress", "json"]
         if !language.isEmpty { args += ["-l", language] }
         args.append(showFps ? "--show-fps" : "--no-show-fps")
-        if keepExtracted { args.append("--keep-extracted") }
+        // nxnative keeps extracted files by default, so "off" must be passed explicitly.
+        args.append(keepExtracted ? "--keep-extracted" : "--no-keep-extracted")
         let name = appName.trimmingCharacters(in: .whitespaces)
         if !name.isEmpty { args += ["--app-name", name] }
         return args

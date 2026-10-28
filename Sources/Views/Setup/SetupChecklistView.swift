@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 // MARK: - Setup checklist
 //
@@ -37,8 +38,8 @@ struct SetupChecklistView: View {
                     .disabled(checker.isChecking || checker.isFixing)
                 }
             } footer: {
-                Text(tr("nxnative selbst wird nicht mitgeliefert: Installiere es per git clone nach ~/NXNative/nxnative oder wähle oben einen eigenen Ordner. Die App findet es dann automatisch.",
-                        "nxnative itself is not bundled: install it with git clone into ~/NXNative/nxnative, or choose a custom folder above. The app then finds it automatically."))
+                Text(tr("nxnative wird nicht mitgeliefert: „git clone https://github.com/seedds/nxnative ~/NXNative/nxnative“ oder oben einen eigenen Ordner wählen.",
+                        "nxnative is not bundled: run “git clone https://github.com/seedds/nxnative ~/NXNative/nxnative” or choose a custom folder above."))
             }
 
             if checker.isFixing || !checker.fixLog.isEmpty {
@@ -82,12 +83,16 @@ struct SetupChecklistView: View {
             guard let url = FilePanels.chooseKeysFile() else { return }
             prefs.prodKeysPath = url.path
             recheck()
+        case .openXcodeInAppStore:
+            if let url = URL(string: "macappstore://apps.apple.com/app/id497799835") {
+                NSWorkspace.shared.open(url)
+            }
+        case .installHomebrewPackages(let packages):
+            checker.installHomebrewPackages(packages, prodKeysExists: prefs.prodKeysExists)
         case .createVenv:
             checker.createVenv(prodKeysExists: prefs.prodKeysExists)
         case .installPythonPackages:
             checker.installPythonPackages(prodKeysExists: prefs.prodKeysExists)
-        case .installCommandLineTools:
-            checker.installCommandLineTools(prodKeysExists: prefs.prodKeysExists)
         }
     }
 }
@@ -156,10 +161,11 @@ struct SetupCheckRow: View {
         switch fix {
         case .chooseRepoFolder:
             return check.status == .ok ? tr("Ändern …", "Change…") : tr("Ordner wählen …", "Choose Folder…")
-        case .createVenv: return tr("venv erstellen", "Create venv")
-        case .installPythonPackages: return tr("Installieren", "Install")
-        case .installCommandLineTools: return tr("Installieren …", "Install…")
         case .chooseProdKeys: return tr("Auswählen …", "Choose…")
+        case .openXcodeInAppStore: return tr("App Store öffnen", "Open App Store")
+        case .installHomebrewPackages: return tr("Installieren", "Install")
+        case .createVenv: return tr("venv erstellen & installieren", "Create venv & Install")
+        case .installPythonPackages: return tr("Installieren", "Install")
         }
     }
 }

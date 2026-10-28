@@ -19,8 +19,10 @@ A native macOS companion app for [nxnative](https://github.com/seedds/nxnative):
 ## Requirements
 
 - Apple Silicon Mac with macOS 14 or later
-- Xcode Command Line Tools (`xcode-select --install`)
-- Python 3.10 or later (e.g. `brew install python`)
+- Xcode (the full app, not only the Command Line Tools)
+- [Homebrew](https://brew.sh) with `xcodegen` and `zstd`
+- .NET SDK 10
+- Python 3.12 or later
 - `prod.keys` dumped from your own Nintendo Switch
 
 ## Installation
@@ -28,13 +30,15 @@ A native macOS companion app for [nxnative](https://github.com/seedds/nxnative):
 **1. Install nxnative**
 
 ```bash
+brew install python xcodegen zstd
+brew install --cask dotnet-sdk
 git clone https://github.com/seedds/nxnative ~/NXNative/nxnative
 cd ~/NXNative/nxnative
 python3 -m venv venv
-venv/bin/pip install lz4 capstone fonttools zstandard
+venv/bin/pip install lz4 capstone fonttools 'backports.zstd; python_version < "3.14"'
 ```
 
-See the nxnative documentation for further requirements. A different location can be selected in **Settings → General → nxnative**.
+The venv is optional – NXNative Hub uses `venv/bin/python3` if it exists, otherwise `python3` from the PATH. See the [nxnative README](https://github.com/seedds/nxnative) for details. A different location can be selected in **Settings → General → nxnative**.
 
 **2. Build NXNative Hub**
 
@@ -45,7 +49,7 @@ cd NXNative-Hub
 ./build.sh /Applications/NXNative.app
 ```
 
-On first launch the setup check verifies the installation (also available under **Help → Check Setup…**).
+On first launch the setup check verifies all of the above and can install missing Homebrew tools and Python packages (also available under **Help → Check Setup…**).
 
 > Builds are signed ad hoc. If Gatekeeper blocks the app, right-click it and choose **Open**, or run `xattr -cr /path/to/NXNative.app`.
 

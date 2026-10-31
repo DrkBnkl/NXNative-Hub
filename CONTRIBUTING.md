@@ -1,39 +1,75 @@
-# Contributing
+# Contributing Guidelines
 
-## Requirements
+Thank you for your interest in contributing to **NXNative Hub**. This document outlines our development workflow, architectural conventions, coding style, and release processes.
 
-- Apple Silicon Mac, macOS 14+, Xcode Command Line Tools (Swift 5.9+) – enough to build the Hub; building games needs nxnative's requirements (see README).
-- No Xcode project: `./build.sh` compiles every `.swift` file under `Sources/` with `swiftc`.
+---
 
-## Build and run
+## Prerequisites & Development Setup
+
+- **Hardware & OS**: Apple Silicon Mac running macOS 14.0 or newer.
+- **Developer Tools**: Xcode Command Line Tools (Swift 5.9+) or full Xcode.
+- **Direct Build Pipeline**: NXNative Hub does not require an `.xcodeproj` file. The entire project compiles cleanly via Swift's standalone compiler:
 
 ```bash
-./build.sh                    # → ~/NXNative/NXNative.app
-./build.sh path/to/App.app    # custom destination
+# Build to standard output location (~/NXNative/NXNative.app)
+./build.sh
+
+# Or build to a specific target path
+./build.sh ./NXNative.app
 ```
 
-Before opening a pull request, build the app and run the relevant parts of [docs/TESTING.md](docs/TESTING.md).
+---
 
-## nxnative interface
+## Architectural & Coding Conventions
 
-Talk to nxnative only through what its `docs/frontends.md` documents: the build script's `--progress json` events and exit codes, `launcher.json`, the `env.txt` order and the saved choices. Do not parse human-readable log lines as an interface.
+### 1. Separation of Concerns
+- **Views**: SwiftUI views (`Sources/Views/`) must contain UI layout and user interaction logic only. File I/O, process handling, and background calculations must reside in `Sources/Managers/` or `Sources/Core/`.
+- **Paths & Files**: Always resolve paths through `NXPaths`. Never hardcode user paths or assume fixed system directories.
+- **Data Protection**: User data is never deleted permanently without confirmation; discarded files and import remnants must be moved to the Trash via `FileManager.trashItem(at:resultingItemURL:)`.
 
-## Conventions
+### 2. Process Safety
+- Always invoke external executables via `CommandRunner` or `StreamingProcess` using **argument arrays** (`[String]`). Never execute raw shell strings through `/bin/sh` or `/bin/zsh`.
 
-**Language**
-- Code, comments, commit messages and documentation are written in English.
-- The UI is bilingual. Every user-visible string uses `tr("German", "English")` (`Sources/Core/Localization.swift`).
-- German literals outside `tr()` are allowed only as data for backward compatibility, with a comment explaining why.
+### 3. Upstream Protocol Compliance
+- Interact with `nxnative` strictly through documented interfaces:
+  - CLI build progress: `--progress json` events and semantic exit codes.
+  - Configuration schema: `launcher.json` (Schema 1).
+  - Runtime environment: `env.txt` and macOS `saved_choices`.
+- Avoid scraping or pattern-matching unstructured console text.
 
-**Code**
-- Views contain no file or process logic; it belongs in `Sources/Managers` or `Sources/Core`. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
-- Resolve paths through `NXPaths`. Run external tools through `CommandRunner` or `StreamingProcess` with argument arrays – never a shell string.
-- Never delete user data permanently; move it to the Trash.
+### 4. Bilingual Localization
+- User-facing text must support both **German** and **English**.
+- Wrap all display strings in `tr("German Text", "English Text")` (`Sources/Core/Localization.swift`).
+- Internal identifiers, comments, log messages, and git commits must remain in English.
 
-**UI** – follow the [Apple Human Interface Guidelines](https://developer.apple.com/design/human-interface-guidelines/): system controls and button styles, toolbar for actions, grouped forms for settings, `ContentUnavailableView` for empty states, semantic fonts, no emoji in controls, accessibility labels for icon-only buttons, confirmation before destructive actions.
+### 5. UI Guidelines
+- Strictly adhere to Apple's [Human Interface Guidelines (HIG)](https://developer.apple.com/design/human-interface-guidelines/):
+  - Use system-provided controls, semantic typography, and standard button placements.
+  - Employ `ContentUnavailableView` for empty states.
+  - Avoid emoji icons within buttons or form controls.
+  - Provide `.accessibilityLabel` for icon-only toolbar items.
 
-## Changes and releases
+---
 
-- Add every user-facing change to [CHANGELOG.md](CHANGELOG.md) under `[Unreleased]` (Added, Changed, Deprecated, Removed, Fixed, Security).
-- Versions follow [Semantic Versioning](https://semver.org/).
-- To release: set `CFBundleShortVersionString` and `CFBundleVersion` in `Info.plist`, move the `[Unreleased]` entries to a new version heading with the date, build, then run `./create_release.sh` and tag the commit (`vX.Y.Z`).
+## Quality Assurance & Verification
+
+Before opening a pull request or tagging a release:
+1. Verify clean compilation: `./build.sh` (ensure exit code 0 and zero warnings).
+2. Execute the verification steps detailed in [docs/TESTING.md](docs/TESTING.md).
+3. Ensure automated GitHub Actions workflows pass cleanly on macOS Apple Silicon runners.
+
+---
+
+## Release Procedure
+
+Releases follow [Semantic Versioning (SemVer)](https://semver.org/):
+
+1. **Update Documentation**:
+   - Move relevant items from `## [Unreleased]` in [CHANGELOG.md](CHANGELOG.md) to a versioned release section (`## [X.Y.Z] – YYYY-MM-DD`).
+2. **Version Bump**:
+   - Increment `CFBundleShortVersionString` and `CFBundleVersion` in `Info.plist`.
+3. **Build & Package**:
+   - Run `./create_release.sh` to package the signed distribution zip.
+4. **Git Tagging & Push**:
+   - Commit changes, push to `main`, and create an annotated git tag (`git tag -a vX.Y.Z -m "Release vX.Y.Z"`).
+   - Push tags (`git push origin vX.Y.Z`) to trigger automated GitHub Actions release packaging.

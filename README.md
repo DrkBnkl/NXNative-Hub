@@ -1,95 +1,150 @@
 # NXNative Hub
 
-[![macOS 14+](https://img.shields.io/badge/macOS-14%2B%20·%20Apple%20Silicon-black?logo=apple)](https://www.apple.com/macos/)
+[![Build](https://github.com/DrkBnkl/NXNative-Hub/actions/workflows/build.yml/badge.svg)](https://github.com/DrkBnkl/NXNative-Hub/actions/workflows/build.yml)
+[![Release](https://img.shields.io/github/v/release/DrkBnkl/NXNative-Hub?color=blue&logo=github)](https://github.com/DrkBnkl/NXNative-Hub/releases/latest)
+[![macOS 14+](https://img.shields.io/badge/macOS-14%2B%20%7C%20Apple%20Silicon-black?logo=apple)](https://www.apple.com/macos/)
 [![Swift 5.9+](https://img.shields.io/badge/Swift-5.9%2B-orange?logo=swift)](https://swift.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
 
-A native macOS companion app for [nxnative](https://github.com/seedds/nxnative): convert Nintendo Switch game dumps into native Apple Silicon apps, then manage and launch them from one library. The UI is available in English and German.
+**NXNative Hub** is a dedicated, native macOS companion app and management suite for [nxnative](https://github.com/seedds/nxnative). It simplifies transforming Nintendo Switch game dumps into standalone Apple Silicon applications, providing centralized library management, granular game configurations, batch importing, and automated environment diagnostics.
 
-## Features
+The interface is fully localized in **English** and **German**.
 
-- **Library** – all converted games with version, size and current settings; search, double-click to play.
-- **Builder** – build a single game as a native Mac app (.app), with live progress and log.
-- **Batch import** – convert every game in `~/NXNative/Import` in one go, with a compatibility check against the nxnative game profiles.
-- **Per-game settings** – the game's own settings list (frame rate, console mode, render scale, upscaling, rumble, language …), saved like the game's own launch window does; older builds use `env.txt`.
-- **Save import** – from JKSV, Checkpoint or Ryujinx; the existing save is backed up first.
-- **Updater** – pull the latest nxnative commits and game profiles from within the app.
-- **Setup check** – detects missing prerequisites (Xcode, Metal toolchain, Homebrew tools, .NET, Python, prod.keys) and fixes most of them with one click.
-- **Diagnostics** – clear error messages for failed builds, build and game logs, bug reports for nxnative issues, notifications when long builds finish.
+---
+
+## Key Features
+
+### 🎮 Centralized Game Library
+- **Catalog & Overview**: View all converted titles with application version, file size, build details, and active runtime configuration.
+- **Instant Launch**: Double-click or press `⌘↩` to launch titles immediately.
+- **Direct Launch Option**: Skip the internal settings window at launch (`--no-launcher` / `DM_LAUNCHER=0`) with global and per-game toggles, while retaining optional Option-key (`⌥`) invocation.
+- **Save Management**: Import game saves from JKSV, Checkpoint, or Ryujinx with automated timestamped backups.
+
+### 🔨 Native macOS Builder & Batch Converter
+- **Single Game Builder**: Convert `.nsp` and `.xci` dumps into native macOS `.app` bundles with real-time build progress and live log output.
+- **Batch Import**: Automatically queue and process multiple titles placed in `~/NXNative/Import` with pre-flight game profile verification.
+- **Smart Rebuild Detection**: Detects existing build artifacts (`<titleID>_build`) to accelerate subsequent compilations and warns about insufficient storage.
+- **Safety First**: Source dump files are moved to the system Trash upon successful processing, never permanently deleted.
+
+### ⚙️ Deep Configuration Engine
+- **Native Game Settings**: Dynamically parses the game's internal `launcher.json` (supported in modern nxnative builds) to render native macOS preferences.
+- **Performance & Display**: Adjust frame rate limits, handheld/docked operating modes, render scale multipliers, MetalFX upscaling, Metal HUD, and frame buffering.
+- **Audio & Haptics**: Full controller rumble toggle with adjustable gain sliders.
+- **Language Selection**: Configure per-game runtime language overrides independently from system defaults.
+- **Non-Destructive Storage**: Persists user customizations as macOS preferences (`saved_choices`) without overriding tested default profiles.
+
+### 🔄 Update & Recompile Intelligence
+- **Per-Game Update Indicators**: Real-time indicators alert you when an installed game would benefit from recompilation due to:
+  - Upstream nxnative engine updates
+  - Updated game compatibility profiles
+  - Shader translation chain improvements
+- **In-App Updater**: Fetch upstream git updates, Python virtual environment packages, and toolchain dependencies directly from within the app.
+
+### 🩺 Environment & Toolchain Diagnostics
+- **Automated Setup Check**: Verifies the host environment (Xcode, Metal toolchain, Apple Silicon Homebrew tools, .NET SDK, Python 3.12+, and `prod.keys`).
+- **One-Click Remediation**: Resolves missing prerequisites and installs toolchain components with a single click.
+- **Crash & Diagnostic Logging**: Direct access to current launch logs, previous launch logs, build failure diagnostics, and automated bug report packaging.
+
+---
 
 ## Requirements
 
-NXNative Hub itself runs on macOS 14 or later. Building games with nxnative needs:
+### Host Application
+- **Operating System**: macOS 14.0 (Sonoma) or later
+- **Architecture**: Apple Silicon (M1/M2/M3/M4 series)
 
-- Apple Silicon Mac with macOS 26.6 or later
-- Xcode 27.1 with its Metal toolchain, [Homebrew](https://brew.sh) (arm64) and the .NET SDK
-- Python 3.12 or later (e.g. `brew install python`)
-- `prod.keys` dumped from your own Nintendo Switch
+### Build Toolchain (for compiling games)
+- Apple Silicon Mac running macOS 26.6 or later
+- Xcode 27.1 (or Xcode with Metal Toolchain component)
+- Homebrew (arm64) with `xcodegen`, `zstd`, and `glslang`
+- .NET SDK (via Homebrew cask `dotnet-sdk` or standard installer)
+- Python 3.12 or newer
+- Valid `prod.keys` extracted from your personal Nintendo Switch console
 
-## Installation
+---
 
-**1. Install nxnative**
+## Installation & Setup
+
+### 1. Toolchain Setup (Prerequisites)
+
+You can allow NXNative Hub to install missing prerequisites automatically via **Help → Check Setup…**, or manually configure them via Terminal:
 
 ```bash
+# Install toolchain components
 xcodebuild -downloadComponent MetalToolchain
 brew install xcodegen zstd glslang
 brew install --cask dotnet-sdk
+
+# Clone and prepare nxnative
 git clone https://github.com/seedds/nxnative ~/NXNative/nxnative
 cd ~/NXNative/nxnative
 python3 -m venv venv
 venv/bin/pip install lz4 capstone fonttools nsz "backports.zstd; python_version < '3.14'"
 ```
 
-The setup check in the app (**Help → Check Setup…**) can do most of these steps for you. See the nxnative documentation for details. A different location can be selected in **Settings → General → nxnative**.
+### 2. Building NXNative Hub from Source
 
-**2. Build NXNative Hub**
+NXNative Hub requires no complex project generation and builds directly via the included script:
 
 ```bash
 git clone https://github.com/DrkBnkl/NXNative-Hub.git
 cd NXNative-Hub
-./build.sh                       # → ~/NXNative/NXNative.app
-./build.sh /Applications/NXNative.app
+./build.sh                       # Outputs to ~/NXNative/NXNative.app
+./build.sh /Applications/NXNative.app # Or to Applications
 ```
 
-On first launch the setup check verifies the installation (also available under **Help → Check Setup…**).
+> **Note on Gatekeeper**: Local builds use ad-hoc code signing. If macOS Gatekeeper prevents opening the app, right-click `NXNative.app` and choose **Open**, or run:
+> ```bash
+> xattr -cr /path/to/NXNative.app
+> ```
 
-> Builds are signed ad hoc. If Gatekeeper blocks the app, right-click it and choose **Open**, or run `xattr -cr /path/to/NXNative.app`.
+---
 
-## Usage
+## Quick Reference
 
-| Task | How |
-|---|---|
-| Convert a single game | **Build Game** → choose the folder with the `.nsp`/`.xci` files → **Build** (⌘R) |
-| Convert several games | Put them into `~/NXNative/Import` → **Game → Open Game Import…** (⇧⌘I) |
-| Change game settings | Select a game → **Game Settings** (⌘I) |
-| Investigate a crash | Context menu → **Open Game Log** or **Create Bug Report…** |
-| Launch a game | Double-click it or press ⌘↩ |
-| App settings | App menu → **Settings…** (⌘,) |
+| Action | Shortcut / Path | Description |
+|---|---|---|
+| **Switch to Library** | `⌘1` | Navigate to installed games catalog |
+| **Switch to Builder** | `⌘2` | Open single game compilation view |
+| **Open Settings** | `⌘,` | Configure app preferences and paths |
+| **Launch Selected Game** | `⌘↩` / Double Click | Start game with saved configuration |
+| **Game Settings** | `⌘I` | Open per-game graphics, control, and launch settings |
+| **Batch Import** | `⇧⌘I` | Convert queued dumps in `~/NXNative/Import` |
+| **Build Current Title** | `⌘R` | Start compilation in the Builder |
+| **Check Environment** | **Help → Check Setup…** | Inspect prerequisites and dependency health |
 
-Converted source files are moved to the Trash, never deleted permanently.
+---
 
-## Directories
+## Standard Directories
 
 | Path | Purpose |
 |---|---|
-| `~/NXNative/nxnative` | nxnative (default location) |
-| `~/NXNative/Games` | Converted games |
-| `~/NXNative/Import` | Games waiting for batch conversion |
-| `~/Library/Application Support/nxnative/<TitleID>/` | `env.txt` and saves per game |
-| `~/Library/Logs/nxnative/<TitleID>.log` | Game log of the last launch |
-| `~/NXNative/Reports` | Bug reports created from the library |
+| `~/NXNative/nxnative` | Upstream nxnative repository and virtual environment |
+| `~/NXNative/Games` | Installed, playable native macOS applications |
+| `~/NXNative/Import` | Target folder for batch compilation |
+| `~/Library/Application Support/nxnative/<TitleID>/` | Game configuration (`env.txt`) and save game data |
+| `~/Library/Logs/nxnative/<TitleID>.log` | Runtime log generated during the most recent execution |
+| `~/NXNative/Reports` | Generated issue diagnostics and bug report archives |
 
-## Documentation
+---
 
-- [CHANGELOG.md](CHANGELOG.md) – release history
-- [CONTRIBUTING.md](CONTRIBUTING.md) – conventions, build, release
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) – code structure and data flow
-- [docs/TESTING.md](docs/TESTING.md) – manual test checklist
+## Project Documentation
 
-## Legal
+- [CHANGELOG.md](CHANGELOG.md) – Version history and semantic releases.
+- [CONTRIBUTING.md](CONTRIBUTING.md) – Coding conventions, architecture guidelines, and release procedures.
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) – Structural design, manager layer, and data flow.
+- [docs/TESTING.md](docs/TESTING.md) – Pre-release quality assurance and manual test plan.
 
-NXNative Hub is a front end only. It does not contain or distribute Nintendo software, games, ROMs or keys. Use only game dumps and keys from hardware you own. Nintendo Switch is a trademark of Nintendo Co., Ltd.; this project is not affiliated with or endorsed by Nintendo.
+---
+
+## Legal & Compliance Notice
+
+NXNative Hub is an independent, open-source front-end management utility. It does not contain, distribute, or circumvent proprietary software, copyrighted game dumps, ROMs, or cryptographic keys. Users are exclusively responsible for obtaining their own keys (`prod.keys`) and software dumps from physical consoles and games they legitimately own.
+
+*Nintendo Switch is a registered trademark of Nintendo Co., Ltd. NXNative Hub is an independent project and is neither affiliated with, maintained by, nor endorsed by Nintendo Co., Ltd.*
+
+---
 
 ## License
 
-[MIT](LICENSE)
+This project is licensed under the [MIT License](LICENSE).

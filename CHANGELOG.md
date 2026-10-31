@@ -3,45 +3,47 @@
 All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to [Semantic Versioning](https://semver.org/).
 
-## [1.3.0] – 2026-10-31
+## [1.0.0] – 2026-10-31
 
-### Added
-- Option to skip the game's start/settings window at launch (`DM_LAUNCHER=0` / `--no-launcher`), with a global toggle in Preferences and a per-game toggle in Game Settings. The window can still be invoked on demand by holding the Option key (⌥) while launching.
-- GitHub Actions CI workflow to automatically build and package the macOS application on Apple Silicon runners (`macos-15`).
+### Initial Release
 
-### Changed
-- Focus strictly on macOS: removed iOS/iPad build target and IPA generation options.
-- Polished and formalized project documentation across README, Architecture, Contributing, and Testing guidelines.
+**NXNative Hub** – Native macOS companion app and management suite for [nxnative](https://github.com/seedds/nxnative) on Apple Silicon.
 
-## [1.2.0] – 2026-10-31
+#### Features
+- **Centralized Game Library**:
+  - Management of converted native macOS applications with version, size, build commit, and active configuration badges.
+  - Real-time search by game name and 16-character Title ID.
+  - Direct launch via double-click or `⌘↩`.
+  - Option to bypass the internal game settings window at launch (`DM_LAUNCHER=0` / `--no-launcher`) with global and per-game toggles, preserving the Option key (`⌥`) manual escape hatch.
+  - Context menu actions: Open Game Log, Open Previous Launch Log, Open in Finder, and Create Bug Report.
 
-### Added
-- Indicator for installed games showing whether an nxnative update is available and whether recompilation is recommended (profile changes, shader chain updates, engine commits), with interactive status sheet, tooltips, and library filter.
-- Game settings come from the game itself (`launcher.json` of current nxnative builds): its own rows, sections, defaults and sub-settings, basic rows first with "Show All Settings", render scale with the resulting resolution. Older builds keep the previous form.
-- Notifications when a build or batch import finishes while the app is in the background (Settings → General).
-- Builder shows the free disk space against the space a build needs, and a hint when a previous build will be reused.
-- "Open Build Logs" after a failed build; "Open Game Log", "Open Log of Previous Launch" and "Create Bug Report…" for games in the library.
-- Setup check for macOS 26.6, Xcode 27.1, the Metal toolchain, the Homebrew tools (xcodegen, zstd, glslang) with one-click install, the .NET SDK (also the Homebrew cask), Python 3.12 and the contents of prod.keys.
+- **Game Builder & Batch Import**:
+  - Convert Nintendo Switch game dumps (`.nsp` / `.xci`) into standalone Apple Silicon applications (`.app`).
+  - Real-time compilation tracking with stage progression, integer percentage, and streaming log output.
+  - Disk space estimation comparing required storage against free disk space.
+  - Incremental rebuild detection (`<titleID>_build`) for faster subsequent builds.
+  - Batch import converting all queued dumps in `~/NXNative/Import` with pre-flight game profile verification.
+  - Non-destructive workflow: source dump files are moved to the system Trash upon completion.
 
-### Changed
-- Game settings are saved as the game's saved choices – only changes from the tested defaults – so the game's own launch window shows the same values.
-- Library badges show the values the game actually uses.
-- "Keep extracted data" is on by default and passed explicitly in both directions; batch imports no longer keep extracted data.
-- Python packages follow nxnative: `backports.zstd` (before Python 3.14) and `nsz` replace `zstandard`.
+- **Configuration Engine**:
+  - Dynamic form generation parsing the game's native `launcher.json` manifest.
+  - Granular control over frame rate limits, handheld/docked mode, render scale multipliers, MetalFX upscaling, Metal HUD, and frame buffering.
+  - Audio and haptic settings with adjustable rumble gain sliders.
+  - Per-game runtime language overrides.
+  - Persistence via macOS preferences (`saved_choices`) without overriding tested profile defaults.
+  - Legacy `env.txt` support for older nxnative builds.
 
-### Fixed
-- Saving game settings no longer pins every value in `env.txt` over the game's tested defaults; values written by 1.1.0 are moved to the saved choices on the next save.
-- Failed builds show the reason (last error message or stderr) instead of only the exit code; cancelled builds are no longer reported as failed.
+- **Update & Recompilation Intelligence**:
+  - Per-game update indicators evaluating installed titles against upstream engine commits, profile updates, and shader translation chain improvements.
+  - Interactive status sheet detailing commit differences, shader versions, and recompilation recommendations.
+  - In-app updater for upstream nxnative repository, Python packages, and toolchain dependencies.
 
-## [1.1.0] – 2026-10-27
+- **Environment Diagnostics & Save Management**:
+  - Automated setup checklist verifying macOS version, Xcode, Metal toolchain, Homebrew utilities, .NET SDK, Python 3.12+, and `prod.keys`.
+  - One-click installation and remediation for missing dependencies.
+  - Save game import supporting JKSV, Checkpoint, and Ryujinx archives with automated timestamped backups.
 
-### Added
-- Game library with search, per-game badges, double-click to launch and context menu.
-- Builder for Mac apps and unsigned IPAs with live progress, log and advanced options (game language, FPS counter, keep extracted data, app name).
-- Batch import from `~/NXNative/Import` with compatibility check against the nxnative game profiles; processed source files are moved to the Trash.
-- Per-game settings stored in `env.txt` (frame rate, console mode, MetalFX, full screen, Metal HUD, FPS counter, rumble, language).
-- Save import from JKSV, Checkpoint and Ryujinx with automatic backup.
-- nxnative updater (git, Python packages, nx_extract).
-- Detection of running builds, including builds started in Terminal.
-- Setup check with one-click fixes; custom nxnative folder.
-- Settings window, German and English UI.
+- **User Interface & Automation**:
+  - Full bilingual localization in German and English with instantaneous runtime switching.
+  - Apple Human Interface Guidelines compliant SwiftUI interface.
+  - Automated GitHub Actions CI workflow building and packaging releases on Apple Silicon runners (`macos-15`).

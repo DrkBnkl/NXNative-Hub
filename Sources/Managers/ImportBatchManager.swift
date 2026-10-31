@@ -34,6 +34,7 @@ final class ImportBatchManager: ObservableObject {
     @Published var isFinished = false
 
     private var runner: StreamingProcess?
+    private var failureTracker = BuildFailureTracker()
     private var cancelRequested = false
     private let scanQueue = DispatchQueue(label: "org.nxnative.importScan", qos: .userInitiated)
 
@@ -149,6 +150,7 @@ final class ImportBatchManager: ObservableObject {
         conversionResults.removeAll()
         logs.removeAll()
         LiveLogWriter.shared.reset()
+        Notifier.requestAuthorizationIfNeeded()
 
         convertNextGame(prodKeysPath: prodKeysPath, language: language, onFinished: onFinished)
     }
@@ -172,6 +174,13 @@ final class ImportBatchManager: ObservableObject {
         progressPercentage = 1.0
         if cancelRequested {
             appendLog(tr("⏹ Stapelumwandlung abgebrochen.", "⏹ Batch conversion cancelled."))
+        } else {
+            let succeeded = conversionResults.values.filter { $0 }.count
+            let failed = conversionResults.count - succeeded
+            Notifier.post(title: tr("Stapel-Import fertig", "Batch Import Finished"),
+                          body: failed == 0
+                              ? tr("\(succeeded) Spiel(e) umgewandelt.", "\(succeeded) game(s) converted.")
+                              : tr("\(succeeded) umgewandelt, \(failed) fehlgeschlagen.", "\(succeeded) converted, \(failed) failed."))
         }
         onFinished()
         scanImportFolder()
@@ -207,8 +216,10 @@ final class ImportBatchManager: ObservableObject {
 
         let runner = StreamingProcess(executable: NXPaths.pythonPath, arguments: arguments)
         runner.onStdoutLine = { [weak self] line in self?.handleOutputLine(line) }
+        failureTracker = BuildFailureTracker()
         runner.onStderrLine = { [weak self] line in
-            self?.appendLog("[Error] \(line.trimmingCharacters(in: .whitespacesAndNewlines))")
+            self?.failureTracker.noteStderr(line)
+            self?.appendLog("[stderr] \(line.trimmingCharacters(in: .whitespacesAndNewlines))")
         }
         runner.onExit = { [weak self] status in
             guard let self = self else { return }
@@ -223,6 +234,9 @@ final class ImportBatchManager: ObservableObject {
             } else {
                 self.appendLog(tr("✗ Umwandlung von „\(game.name)“ fehlgeschlagen (Exit-Code \(status)).",
                                   "✗ Conversion of “\(game.name)” failed (exit code \(status))."))
+                if let reason = self.failureTracker.describe(exitCode: status) {
+                    self.appendLog("  \(tr("Ursache", "Reason")): \(reason)")
+                }
             }
 
             self.currentGameIndex += 1
@@ -336,6 +350,7 @@ final class ImportBatchManager: ObservableObject {
             appendLog("\(ok ? "✓" : "✗") \(trans.title) \(tr("fertig", "done")) (\(BuildEvent.formatElapsed(elapsed)))")
 
         case let .say(message):
+            failureTracker.noteSay(message)
             appendLog(message)
 
         case .otherJSON:

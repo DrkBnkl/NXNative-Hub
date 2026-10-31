@@ -11,16 +11,19 @@ A native macOS companion app for [nxnative](https://github.com/seedds/nxnative):
 - **Library** – all converted games with version, size and current settings; search, double-click to play.
 - **Builder** – build a single game as a Mac app or an unsigned IPA, with live progress and log.
 - **Batch import** – convert every game in `~/NXNative/Import` in one go, with a compatibility check against the nxnative game profiles.
-- **Per-game settings** – frame rate, docked/handheld, MetalFX upscaling, full screen, Metal HUD, rumble, language (`env.txt`).
+- **Per-game settings** – the game's own settings list (frame rate, console mode, render scale, upscaling, rumble, language …), saved like the game's own launch window does; older builds use `env.txt`.
 - **Save import** – from JKSV, Checkpoint or Ryujinx; the existing save is backed up first.
 - **Updater** – pull the latest nxnative commits and game profiles from within the app.
-- **Setup check** – detects missing prerequisites and fixes most of them with one click.
+- **Setup check** – detects missing prerequisites (Xcode, Metal toolchain, Homebrew tools, .NET, Python, prod.keys) and fixes most of them with one click.
+- **Diagnostics** – clear error messages for failed builds, build and game logs, bug reports for nxnative issues, notifications when long builds finish.
 
 ## Requirements
 
-- Apple Silicon Mac with macOS 14 or later
-- Xcode Command Line Tools (`xcode-select --install`)
-- Python 3.10 or later (e.g. `brew install python`)
+NXNative Hub itself runs on macOS 14 or later. Building games with nxnative needs:
+
+- Apple Silicon Mac with macOS 26.6 or later
+- Xcode 27.1 with its Metal toolchain, [Homebrew](https://brew.sh) (arm64) and the .NET SDK
+- Python 3.12 or later (e.g. `brew install python`)
 - `prod.keys` dumped from your own Nintendo Switch
 
 ## Installation
@@ -28,13 +31,16 @@ A native macOS companion app for [nxnative](https://github.com/seedds/nxnative):
 **1. Install nxnative**
 
 ```bash
+xcodebuild -downloadComponent MetalToolchain
+brew install xcodegen zstd glslang
+brew install --cask dotnet-sdk
 git clone https://github.com/seedds/nxnative ~/NXNative/nxnative
 cd ~/NXNative/nxnative
 python3 -m venv venv
-venv/bin/pip install lz4 capstone fonttools zstandard
+venv/bin/pip install lz4 capstone fonttools nsz "backports.zstd; python_version < '3.14'"
 ```
 
-See the nxnative documentation for further requirements. A different location can be selected in **Settings → General → nxnative**.
+The setup check in the app (**Help → Check Setup…**) can do most of these steps for you. See the nxnative documentation for details. A different location can be selected in **Settings → General → nxnative**.
 
 **2. Build NXNative Hub**
 
@@ -56,6 +62,7 @@ On first launch the setup check verifies the installation (also available under 
 | Convert a single game | **Build Game** → choose the folder with the `.nsp`/`.xci` files → **Build** (⌘R) |
 | Convert several games | Put them into `~/NXNative/Import` → **Game → Open Game Import…** (⇧⌘I) |
 | Change game settings | Select a game → **Game Settings** (⌘I) |
+| Investigate a crash | Context menu → **Open Game Log** or **Create Bug Report…** |
 | Launch a game | Double-click it or press ⌘↩ |
 | App settings | App menu → **Settings…** (⌘,) |
 
@@ -69,6 +76,8 @@ Converted source files are moved to the Trash, never deleted permanently.
 | `~/NXNative/Games` | Converted games |
 | `~/NXNative/Import` | Games waiting for batch conversion |
 | `~/Library/Application Support/nxnative/<TitleID>/` | `env.txt` and saves per game |
+| `~/Library/Logs/nxnative/<TitleID>.log` | Game log of the last launch |
+| `~/NXNative/Reports` | Bug reports created from the library |
 
 ## Documentation
 

@@ -187,3 +187,77 @@ enum BuildStageInfo {
         text.contains("Pipeline") || text.contains("metal-tt")
     }
 }
+
+// MARK: - Why a build ended (exit codes of build_ipa_from_nsp.py)
+//
+// From nxnative docs/frontends.md:
+//   0 finished · 1 stopped on an error (the last `say` starting with "[RED] " gives the reason)
+//   2 invalid command-line arguments (stderr only, no JSON events) · 130 interrupted
+
+struct BuildFailureTracker {
+    private(set) var lastError: String?
+    private(set) var stderrTail: [String] = []
+
+    static let redPrefix = "[RED] "
+
+    mutating func noteSay(_ message: String) {
+        if message.hasPrefix(Self.redPrefix) {
+            lastError = String(message.dropFirst(Self.redPrefix.count))
+        }
+    }
+
+    mutating func noteStderr(_ line: String) {
+        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        stderrTail.append(trimmed)
+        if stderrTail.count > 12 { stderrTail.removeFirst(stderrTail.count - 12) }
+    }
+
+    /// 130 = SIGINT (Python's own exit code, or the signal as reported by StreamingProcess), 143 = SIGTERM.
+    static func wasInterrupted(_ exitCode: Int32) -> Bool {
+        exitCode == 130 || exitCode == 143
+    }
+
+    /// A short explanation for the user, or nil for a successful build.
+    func describe(exitCode: Int32) -> String? {
+        let stderrSummary = stderrTail.suffix(4).joined(separator: "\n")
+        switch exitCode {
+        case 0:
+            return nil
+        case 2:
+            let text = tr("nxnative hat die Aufrufparameter abgelehnt (Exit-Code 2). Meist passen nxnative und NXNative Hub nicht zusammen – aktualisiere nxnative über „Nach Updates suchen …“.",
+                          "nxnative rejected the command-line arguments (exit code 2). This usually means nxnative and NXNative Hub do not match – update nxnative with “Check for Updates…”.")
+            return stderrSummary.isEmpty ? text : text + "\n\n" + stderrSummary
+        case _ where Self.wasInterrupted(exitCode):
+            return tr("Build abgebrochen.", "Build cancelled.")
+        default:
+            if let lastError = lastError { return lastError }
+            if let last = stderrTail.last { return last }
+            return tr("Build fehlgeschlagen (Exit-Code \(exitCode)). Details stehen im Protokoll.",
+                      "Build failed (exit code \(exitCode)). See the log for details.")
+        }
+    }
+}
+
+// MARK: - Work folder of a build (<NSP folder>/<title ID>_build)
+
+enum BuildWorkFolder {
+    /// `<title ID>_build` folders in a game folder. nxnative reuses them, so a rebuild is much faster.
+    static func find(in gameDirectory: String) -> [URL] {
+        let url = URL(fileURLWithPath: gameDirectory)
+        let items = (try? FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: [.isDirectoryKey])) ?? []
+        return items.filter { item in
+            let name = item.lastPathComponent
+            guard name.hasSuffix("_build"),
+                  SwitchTitleID.normalized(String(name.dropLast("_build".count))) != nil else { return false }
+            return (try? item.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true
+        }
+    }
+
+    /// The full tool output of the last build (`<title ID>_build/logs`), if present.
+    static func logsFolder(in gameDirectory: String) -> String? {
+        find(in: gameDirectory)
+            .map { $0.appendingPathComponent("logs").path }
+            .first { FileManager.default.fileExists(atPath: $0) }
+    }
+}

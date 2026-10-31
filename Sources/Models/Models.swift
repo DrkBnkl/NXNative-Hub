@@ -99,26 +99,62 @@ struct InstalledGame: Identifiable, Hashable {
     var upscaling: String
     var isFullscreen: Bool
     var language: String
+    /// Built with a current nxnative that ships launcher.json (settings list, saved choices).
+    var hasSettingsList: Bool
+    /// The nxnative git commit hash stamped into Info.plist (DMCommit), if recorded.
+    var buildCommit: String?
+    /// The shader chain version the game carries (Contents/Resources/msl/b-<chain> or DMChain).
+    var shaderChain: String?
+    /// Modification date of the game bundle.
+    var mtime: Date
+    /// Indicator whether an nxnative update exists and whether recompiling is recommended.
+    var updateStatus: GameUpdateStatus
+
+    var logPath: String { NXPaths.gameLogPath(titleId: titleId) }
+    var previousLogPath: String { NXPaths.previousGameLogPath(titleId: titleId) }
 
     var icon: NSImage {
         NSWorkspace.shared.icon(forFile: path)
     }
 }
 
-/// Reads title ID, name and version from a converted game's Info.plist.
+/// Reads title ID, name, version, commit and shader chain from a converted game's Info.plist and bundle.
 struct GameBundleInfo {
     let titleId: String
     let name: String
     let version: String
+    /// Preferences domain of the game's own launcher (saved choices), e.g. `org.nxnative.0100…`.
+    let bundleId: String
+    let commit: String?
+    let chain: String?
+    let mtime: Date
 
     init?(appPath: String) {
-        let plistURL = URL(fileURLWithPath: appPath).appendingPathComponent("Contents/Info.plist")
+        let appURL = URL(fileURLWithPath: appPath)
+        let plistURL = appURL.appendingPathComponent("Contents/Info.plist")
         guard let data = try? Data(contentsOf: plistURL),
               let plist = (try? PropertyListSerialization.propertyList(from: data, format: nil)) as? [String: Any],
               let tid = plist["DMTitleID"] as? String, !tid.isEmpty else { return nil }
         self.titleId = tid
-        self.name = (plist["CFBundleName"] as? String) ?? URL(fileURLWithPath: appPath).deletingPathExtension().lastPathComponent
+        self.name = (plist["CFBundleName"] as? String) ?? appURL.deletingPathExtension().lastPathComponent
         self.version = (plist["CFBundleShortVersionString"] as? String) ?? "1.0"
+        self.bundleId = (plist["CFBundleIdentifier"] as? String) ?? "org.nxnative.\(tid.lowercased())"
+        self.commit = plist["DMCommit"] as? String
+
+        var foundChain = plist["DMChain"] as? String
+        if foundChain == nil {
+            let mslDir = appURL.appendingPathComponent("Contents/Resources/msl")
+            if let items = try? FileManager.default.contentsOfDirectory(atPath: mslDir.path) {
+                for item in items where item.hasPrefix("b-") {
+                    foundChain = String(item.dropFirst(2))
+                    break
+                }
+            }
+        }
+        self.chain = foundChain
+
+        let attrs = try? FileManager.default.attributesOfItem(atPath: appPath)
+        self.mtime = (attrs?[.modificationDate] as? Date) ?? Date()
     }
 }
 
@@ -159,6 +195,7 @@ struct DetectedGameFile: Identifiable {
     let id = UUID()
     let name: String
     let path: String
+    let sizeBytes: Int64
     let sizeFormatted: String
     let kind: Kind
 
@@ -167,6 +204,7 @@ struct DetectedGameFile: Identifiable {
         self.path = url.path
 
         let size = Int64((try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0)
+        self.sizeBytes = size
         self.sizeFormatted = ByteCountFormatter.string(fromByteCount: size, countStyle: .file)
 
         // Heuristic based on the common file name pattern "Name [TitleID][vXXXX].nsp"

@@ -64,6 +64,9 @@ struct ContentView: View {
         .sheet(isPresented: $router.showingSetup) {
             withEnvironment(SetupSheet())
         }
+        .sheet(item: $router.statusTargetGame) { game in
+            withEnvironment(GameStatusSheet(game: game))
+        }
     }
 
     /// Passes all state objects to sheets explicitly (independent of whether the

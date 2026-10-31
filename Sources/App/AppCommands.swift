@@ -63,6 +63,11 @@ struct AppCommands: Commands {
             .keyboardShortcut("i", modifiers: .command)
             .disabled(selectedGame == nil)
 
+            Button(tr("Spiel-Protokoll öffnen", "Open Game Log")) {
+                if let game = selectedGame { FilePanels.openInFinder(game.logPath) }
+            }
+            .disabled(selectedGame.map { !GameDiagnostics.hasLog($0) } ?? true)
+
             Divider()
 
             Button(tr("Spiel bauen", "Build Game")) {

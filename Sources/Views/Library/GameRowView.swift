@@ -6,6 +6,7 @@ struct GameRowView: View {
     let game: InstalledGame
     let onPlay: () -> Void
     let onSettings: () -> Void
+    let onShowStatus: () -> Void
 
     var body: some View {
         HStack(spacing: 12) {
@@ -16,9 +17,19 @@ struct GameRowView: View {
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 3) {
-                Text(game.name)
-                    .font(.headline)
-                    .lineLimit(1)
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(game.name)
+                        .font(.headline)
+                        .lineLimit(1)
+
+                    if let badge = game.updateStatus.badge {
+                        Button(action: onShowStatus) {
+                            BadgeView(text: badge.text, systemImage: badge.icon, color: badge.color)
+                        }
+                        .buttonStyle(.plain)
+                        .help(game.updateStatus.tooltip)
+                    }
+                }
 
                 HStack(spacing: 6) {
                     Text(game.titleId)
@@ -32,8 +43,10 @@ struct GameRowView: View {
                 .foregroundStyle(.secondary)
 
                 HStack(spacing: 4) {
-                    BadgeView(text: "\(game.fpsTarget) FPS", color: game.fpsTarget == "60" ? .green : .blue)
-                    BadgeView(text: game.isDocked ? "Docked 1080p" : "Handheld 720p", color: .purple)
+                    if !game.fpsTarget.isEmpty {
+                        BadgeView(text: "\(game.fpsTarget) FPS", color: game.fpsTarget == "60" ? .green : .blue)
+                    }
+                    BadgeView(text: game.isDocked ? "Docked" : "Handheld", color: .purple)
                     if game.upscaling == "metalfx" {
                         BadgeView(text: "MetalFX", color: .orange)
                     }

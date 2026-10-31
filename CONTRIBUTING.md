@@ -2,7 +2,7 @@
 
 ## Requirements
 
-- Apple Silicon Mac, macOS 14+, Xcode Command Line Tools (Swift 5.9+)
+- Apple Silicon Mac, macOS 14+, Xcode Command Line Tools (Swift 5.9+) – enough to build the Hub; building games needs nxnative's requirements (see README).
 - No Xcode project: `./build.sh` compiles every `.swift` file under `Sources/` with `swiftc`.
 
 ## Build and run
@@ -13,6 +13,10 @@
 ```
 
 Before opening a pull request, build the app and run the relevant parts of [docs/TESTING.md](docs/TESTING.md).
+
+## nxnative interface
+
+Talk to nxnative only through what its `docs/frontends.md` documents: the build script's `--progress json` events and exit codes, `launcher.json`, the `env.txt` order and the saved choices. Do not parse human-readable log lines as an interface.
 
 ## Conventions
 

@@ -14,6 +14,7 @@ final class AppRouter: ObservableObject {
     @Published var showingLiveLog = false
     @Published var showingImportSheet = false
     @Published var showingSetup = false
+    @Published var statusTargetGame: InstalledGame? = nil
 }
 
 // MARK: - Game actions (used by views and menu commands)

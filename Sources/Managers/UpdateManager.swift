@@ -147,8 +147,7 @@ final class UpdateManager: ObservableObject {
             }
 
             // 4. Rebuild nx_extract if .NET is installed
-            let dotnet = NXPaths.dotnetExecutable
-            if FileManager.default.fileExists(atPath: dotnet) {
+            if let dotnet = NXPaths.dotnetExecutable {
                 self.log(tr("[3/4] nx_extract wird neu kompiliert …", "[3/4] Rebuilding nx_extract…"))
                 let build = CommandRunner.run(dotnet, ["build", NXPaths.nxExtractProject, "-c", "Release"])
                 self.log(build.succeeded ? tr("✓ nx_extract erfolgreich gebaut", "✓ nx_extract built successfully")
@@ -158,8 +157,9 @@ final class UpdateManager: ObservableObject {
             // 5. Upgrade Python packages
             let pip = NXPaths.pipPath
             if FileManager.default.fileExists(atPath: pip) {
-                self.log(tr("[4/4] Python-Bibliotheken prüfen (lz4, capstone, fonttools, zstandard) …",
-                            "[4/4] Checking Python libraries (lz4, capstone, fonttools, zstandard)…"))
+                let names = NXPaths.requiredPythonModules.map { $0.displayName }.joined(separator: ", ")
+                self.log(tr("[4/4] Python-Bibliotheken prüfen (\(names)) …",
+                            "[4/4] Checking Python libraries (\(names))…"))
                 let pipResult = CommandRunner.run(pip, ["install", "--upgrade"] + NXPaths.requiredPythonModules.map { $0.package })
                 self.log(pipResult.succeeded ? tr("✓ Python-Pakete aktuell", "✓ Python packages up to date")
                                              : "[\(tr("Warnung", "Warning"))] pip: \(pipResult.trimmedOutput)")

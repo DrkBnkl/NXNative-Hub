@@ -49,4 +49,9 @@ enum FilePanels {
     static func revealInFinder(_ path: String) {
         NSWorkspace.shared.selectFile(path, inFileViewerRootedAtPath: "")
     }
+
+    /// Opens a folder in the Finder, or a file in its default app (e.g. a .log in Console).
+    static func openInFinder(_ path: String) {
+        NSWorkspace.shared.open(URL(fileURLWithPath: path))
+    }
 }

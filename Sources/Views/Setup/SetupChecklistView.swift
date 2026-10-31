@@ -88,6 +88,10 @@ struct SetupChecklistView: View {
             checker.installPythonPackages(prodKeysExists: prefs.prodKeysExists)
         case .installCommandLineTools:
             checker.installCommandLineTools(prodKeysExists: prefs.prodKeysExists)
+        case .installBrewTools:
+            checker.installBrewTools(prodKeysExists: prefs.prodKeysExists)
+        case .downloadMetalToolchain:
+            checker.downloadMetalToolchain(prodKeysExists: prefs.prodKeysExists)
         }
     }
 }
@@ -160,6 +164,8 @@ struct SetupCheckRow: View {
         case .installPythonPackages: return tr("Installieren", "Install")
         case .installCommandLineTools: return tr("Installieren …", "Install…")
         case .chooseProdKeys: return tr("Auswählen …", "Choose…")
+        case .installBrewTools: return tr("Installieren", "Install")
+        case .downloadMetalToolchain: return tr("Laden", "Download")
         }
     }
 }

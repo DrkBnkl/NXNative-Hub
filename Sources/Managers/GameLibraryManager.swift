@@ -13,6 +13,15 @@ final class GameLibraryManager: ObservableObject {
     private let sizeCacheKey = "nxnative_size_cache"
     private let scanQueue = DispatchQueue(label: "org.nxnative.libraryScan", qos: .userInitiated)
     private var rescanRequested = false
+    private var statusCache: [String: (mtime: Date, headCommit: String, status: GameUpdateStatus)] = [:]
+
+    var recompileRecommendedCount: Int {
+        games.filter { $0.updateStatus.isRecompileRecommended }.count
+    }
+
+    var updateAvailableCount: Int {
+        games.filter { $0.updateStatus.isUpdateAvailable }.count
+    }
 
     /// Folders skipped while scanning (tools, import sources).
     private let ignoredFolderNames: Set<String> = ["nxnative", "nxnative-gui", "Import", "venv"]
@@ -130,6 +139,7 @@ final class GameLibraryManager: ObservableObject {
         var usedCacheKeys = Set<String>()
         var result: [InstalledGame] = []
         var seenTitleIds = Set<String>()
+        let repoState = GameUpdateChecker.loadRepoState()
 
         for app in appURLs {
             let resolved = app.resolvingSymlinksInPath()
@@ -140,8 +150,35 @@ final class GameLibraryManager: ObservableObject {
             let size = folderSize(url: resolved, cache: &sizeCache)
             usedCacheKeys.insert(resolved.path)
 
-            // Current game settings for the badges
-            let env = EnvFile.load(path: NXPaths.envFilePath(titleId: info.titleId))?.values ?? [:]
+            // Current game settings for the badges: what the game will use at launch
+            // (settings list: env.txt → saved choice → tested default; older builds: env.txt only).
+            var env = EnvFile.load(path: NXPaths.envFilePath(titleId: info.titleId))?.values ?? [:]
+            let list = LauncherSettingsList.load(appPath: resolved.path)
+            if let list = list {
+                let bundleEnv = EnvFile.load(path: NXPaths.bundleEnvFilePath(appPath: resolved.path))?.values ?? [:]
+                env.merge(GameSettingsResolver.effectiveValues(list: list, envValues: env,
+                                                               bundleEnvValues: bundleEnv,
+                                                               bundleId: info.bundleId)) { _, effective in effective }
+            }
+
+            // Check whether an nxnative update exists for this game and whether recompilation is recommended
+            let status: GameUpdateStatus
+            if let cached = statusCache[resolved.path],
+               cached.headCommit == (repoState?.headCommit ?? ""),
+               abs(cached.mtime.timeIntervalSince(info.mtime)) < 2 {
+                status = cached.status
+            } else {
+                status = GameUpdateChecker.evaluate(
+                    titleId: info.titleId,
+                    buildCommit: info.commit,
+                    shaderChain: info.chain,
+                    mtime: info.mtime,
+                    repoState: repoState
+                )
+                if let head = repoState?.headCommit {
+                    statusCache[resolved.path] = (mtime: info.mtime, headCommit: head, status: status)
+                }
+            }
 
             result.append(InstalledGame(
                 id: info.titleId,
@@ -150,11 +187,17 @@ final class GameLibraryManager: ObservableObject {
                 version: info.version,
                 path: resolved.path,
                 sizeFormatted: ByteCountFormatter.string(fromByteCount: size, countStyle: .file),
-                fpsTarget: env["DM_FPS_TARGET"] ?? "60",
+                // A listed game without a frame-rate row has no FPS choice: no badge ("").
+                fpsTarget: env["DM_FPS_TARGET"] ?? (list == nil ? "60" : ""),
                 isDocked: (env["DM_OPMODE"] ?? "1") == "1",
-                upscaling: env["DM_PRESENT_UPSCALE"] ?? "metalfx",
+                upscaling: env["DM_PRESENT_UPSCALE"] ?? (list == nil ? "metalfx" : "off"),
                 isFullscreen: env["DM_FULLSCREEN"] == "1",
-                language: env["DM_LANG"] ?? ""
+                language: env["DM_LANG"] ?? "",
+                hasSettingsList: list != nil,
+                buildCommit: info.commit,
+                shaderChain: info.chain,
+                mtime: info.mtime,
+                updateStatus: status
             ))
         }
 

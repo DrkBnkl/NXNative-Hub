@@ -4,16 +4,39 @@ import UniformTypeIdentifiers
 
 // MARK: - Library ("My Games")
 
+enum LibraryFilter: String, CaseIterable, Identifiable {
+    case all
+    case recompile
+    case updates
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .all: return tr("Alle Spiele", "All Games")
+        case .recompile: return tr("Neukompilierung empfohlen", "Recompile Recommended")
+        case .updates: return tr("Updates verfügbar", "Updates Available")
+        }
+    }
+}
+
 struct LibraryView: View {
     @EnvironmentObject private var library: GameLibraryManager
     @EnvironmentObject private var router: AppRouter
     @EnvironmentObject private var gameSettings: GameSettingsModel
     @State private var searchText = ""
     @State private var isDropTargeted = false
+    @State private var filter: LibraryFilter = .all
 
     private var filteredGames: [InstalledGame] {
-        guard !searchText.isEmpty else { return library.games }
-        return library.games.filter {
+        var list = library.games
+        switch filter {
+        case .all: break
+        case .recompile: list = list.filter { $0.updateStatus.isRecompileRecommended }
+        case .updates: list = list.filter { $0.updateStatus.isUpdateAvailable }
+        }
+        guard !searchText.isEmpty else { return list }
+        return list.filter {
             $0.name.localizedCaseInsensitiveContains(searchText)
                 || $0.titleId.localizedCaseInsensitiveContains(searchText)
         }
@@ -23,10 +46,21 @@ struct LibraryView: View {
         library.games.first { $0.id == router.selectedGameID }
     }
 
+    private var subtitleText: String {
+        guard !library.games.isEmpty else { return "" }
+        let total = library.games.count
+        let recompile = library.recompileRecommendedCount
+        if recompile > 0 {
+            return tr("\(total) Spiele • \(recompile) Neukompilierung empfohlen",
+                      "\(total) games • \(recompile) recompile recommended")
+        }
+        return tr("\(total) Spiele", "\(total) games")
+    }
+
     var body: some View {
         content
             .navigationTitle(SidebarItem.library.title)
-            .navigationSubtitle(library.games.isEmpty ? "" : tr("\(library.games.count) Spiele", "\(library.games.count) games"))
+            .navigationSubtitle(subtitleText)
             .searchable(text: $searchText, placement: .toolbar, prompt: tr("Spiele durchsuchen", "Search games"))
             .toolbar { toolbarContent }
             .onDrop(of: [.fileURL], isTargeted: $isDropTargeted, perform: handleDrop)
@@ -61,7 +95,8 @@ struct LibraryView: View {
                 ForEach(filteredGames) { game in
                     GameRowView(game: game,
                                 onPlay: { GameActions.launch(game) },
-                                onSettings: { openSettings(game) })
+                                onSettings: { openSettings(game) },
+                                onShowStatus: { router.statusTargetGame = game })
                 }
             }
             .listStyle(.inset)
@@ -101,6 +136,17 @@ struct LibraryView: View {
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         ToolbarItemGroup(placement: .primaryAction) {
+            if library.updateAvailableCount > 0 {
+                Picker(tr("Filter", "Filter"), selection: $filter) {
+                    ForEach(LibraryFilter.allCases) { item in
+                        Text(item.title).tag(item)
+                    }
+                }
+                .pickerStyle(.menu)
+                .help(tr("Spiele nach Aktualisierungs- und Neukompilierungs-Status filtern",
+                         "Filter games by update and recompilation status"))
+            }
+
             Button {
                 if let game = selectedGame { GameActions.launch(game) }
             } label: {
@@ -139,9 +185,18 @@ struct LibraryView: View {
     private func gameMenuItems(for game: InstalledGame) -> some View {
         Button(tr("Spielen", "Play")) { GameActions.launch(game) }
         Button(tr("Spiel-Einstellungen …", "Game Settings…")) { openSettings(game) }
+        Button(tr("nxnative-Status & Neukompilierung …", "nxnative Status & Recompilation…")) {
+            router.statusTargetGame = game
+        }
         Divider()
         Button(tr("Spielstand importieren …", "Import Save…")) { importSave(for: game) }
         Button(tr("Spielstand-Ordner öffnen", "Open Save Folder")) { SaveGameImporter.openSaveFolder(titleId: game.titleId) }
+        Divider()
+        Button(tr("Spiel-Protokoll öffnen", "Open Game Log")) { FilePanels.openInFinder(game.logPath) }
+            .disabled(!GameDiagnostics.hasLog(game))
+        Button(tr("Protokoll des vorherigen Starts öffnen", "Open Log of Previous Launch")) { FilePanels.openInFinder(game.previousLogPath) }
+            .disabled(!GameDiagnostics.hasPreviousLog(game))
+        Button(tr("Fehlerbericht erstellen …", "Create Bug Report…")) { createBugReport(for: game) }
         Divider()
         Button(tr("Im Finder zeigen", "Show in Finder")) { FilePanels.revealInFinder(game.path) }
     }
@@ -171,6 +226,25 @@ struct LibraryView: View {
             : tr("In der Auswahl wurden keine Speicherdaten gefunden.", "No save data was found in the selection.")
         alert.alertStyle = result.copiedCount > 0 ? .informational : .warning
         alert.runModal()
+    }
+
+    private func createBugReport(for game: InstalledGame) {
+        GameDiagnostics.createBugReport(for: game) { result in
+            let alert = NSAlert()
+            switch result {
+            case let .created(path):
+                alert.messageText = tr("Fehlerbericht erstellt", "Bug Report Created")
+                alert.informativeText = tr("Die ZIP-Datei enthält Protokolle und Build-Informationen, aber keine Spieldaten oder Schlüssel. Hänge sie an ein Issue bei nxnative an.",
+                                           "The zip file contains logs and build information, but no game data or keys. Attach it to an issue at nxnative.")
+                alert.alertStyle = .informational
+                FilePanels.revealInFinder(path)
+            case let .failed(message):
+                alert.messageText = tr("Fehlerbericht konnte nicht erstellt werden", "Could Not Create Bug Report")
+                alert.informativeText = message
+                alert.alertStyle = .warning
+            }
+            alert.runModal()
+        }
     }
 
     private func addApplications() {

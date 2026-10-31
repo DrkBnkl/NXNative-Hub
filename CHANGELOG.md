@@ -5,6 +5,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+- Focus strictly on macOS: removed iOS/iPad build target and IPA generation options.
+
 ## [1.2.0] – 2026-10-31
 
 ### Added

@@ -9,13 +9,23 @@ A native macOS companion app for [nxnative](https://github.com/seedds/nxnative):
 ## Features
 
 - **Library** – all converted games with version, size and current settings; search, double-click to play.
-- **Builder** – build a single game as a Mac app or an unsigned IPA, with live progress and log.
+- **Builder** – build a single game as a native Mac app (.app), with live progress and log.
 - **Batch import** – convert every game in `~/NXNative/Import` in one go, with a compatibility check against the nxnative game profiles.
 - **Per-game settings** – the game's own settings list (frame rate, console mode, render scale, upscaling, rumble, language …), saved like the game's own launch window does; older builds use `env.txt`.
 - **Save import** – from JKSV, Checkpoint or Ryujinx; the existing save is backed up first.
 - **Updater** – pull the latest nxnative commits and game profiles from within the app.
 - **Setup check** – detects missing prerequisites (Xcode, Metal toolchain, Homebrew tools, .NET, Python, prod.keys) and fixes most of them with one click.
 - **Diagnostics** – clear error messages for failed builds, build and game logs, bug reports for nxnative issues, notifications when long builds finish.
+
+## Screenshots
+
+| Game Library & Update Indicators | Recompilation Status Details |
+|---|---|
+| ![Game Library](docs/screenshots/01-library-update-indicators.png) | ![Recompilation Status Sheet](docs/screenshots/02-status-sheet.png) |
+
+| Game Settings | Game Builder |
+|---|---|
+| ![Game Settings](docs/screenshots/04-game-settings.png) | ![Game Builder](docs/screenshots/03-builder.png) |
 
 ## Requirements
 

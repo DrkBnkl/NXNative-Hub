@@ -29,7 +29,6 @@ enum SidebarItem: String, CaseIterable, Identifiable, Hashable {
 
 enum TargetPlatform: String, CaseIterable, Identifiable {
     case macApp = "mac-app"
-    case ios = "ios"
     case macDev = "mac"
 
     var id: String { rawValue }
@@ -37,7 +36,6 @@ enum TargetPlatform: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .macApp: return tr("Mac-App", "Mac App")
-        case .ios: return tr("iPhone / iPad", "iPhone / iPad")
         case .macDev: return tr("Entwicklertest", "Developer Test")
         }
     }
@@ -45,7 +43,6 @@ enum TargetPlatform: String, CaseIterable, Identifiable {
     var subtitle: String {
         switch self {
         case .macApp: return tr("Eigenständige macOS-App (.app) – per Doppelklick spielbar.", "Standalone macOS app (.app) – double-click to play.")
-        case .ios: return tr("Unsignierte IPA-Datei für Sideloading (TrollStore / AltStore).", "Unsigned IPA file for sideloading (TrollStore / AltStore).")
         case .macDev: return tr("Direkter Start im Terminal zum Testen.", "Runs directly in Terminal for debugging.")
         }
     }
@@ -53,7 +50,6 @@ enum TargetPlatform: String, CaseIterable, Identifiable {
     var systemImage: String {
         switch self {
         case .macApp: return "macwindow"
-        case .ios: return "iphone"
         case .macDev: return "terminal"
         }
     }

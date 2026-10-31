@@ -220,15 +220,14 @@ final class BuildManager: ObservableObject {
     private func findOutputArtifact(gameDir: String, platform: TargetPlatform) {
         guard let files = try? FileManager.default.contentsOfDirectory(at: URL(fileURLWithPath: gameDir),
                                                                        includingPropertiesForKeys: nil) else { return }
-        let wanted: String
         switch platform {
-        case .macApp: wanted = "app"
-        case .ios: wanted = "ipa"
-        case .macDev: return
-        }
-        if let artifact = files.first(where: { $0.pathExtension == wanted }) {
-            createdArtifactPath = artifact.path
-            appendLog("\(tr("Erstellt", "Created")): \(artifact.lastPathComponent)")
+        case .macApp:
+            if let artifact = files.first(where: { $0.pathExtension == "app" }) {
+                createdArtifactPath = artifact.path
+                appendLog("\(tr("Erstellt", "Created")): \(artifact.lastPathComponent)")
+            }
+        case .macDev:
+            return
         }
     }
 

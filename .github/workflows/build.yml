@@ -34,7 +34,7 @@ jobs:
         run: |
           VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" Info.plist)
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-          ZIP_NAME="NXNative-Companion-v${VERSION}.zip"
+          ZIP_NAME="NXNative-Hub-v${VERSION}.zip"
           echo "zip_name=${ZIP_NAME}" >> "$GITHUB_OUTPUT"
           ditto -c -k --keepParent ./NXNative.app "./${ZIP_NAME}"
           ls -lh "./${ZIP_NAME}"

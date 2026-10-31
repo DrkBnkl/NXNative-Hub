@@ -12,6 +12,7 @@ final class AppPreferences: ObservableObject {
         static let prodKeys = "savedProdKeysPath"
         static let gameLanguage = "defaultGameLanguage"
         static let notifyBuilds = Notifier.enabledKey
+        static let skipGameLauncher = "skipGameLauncher"
     }
 
     @Published var prodKeysPath: String {
@@ -35,9 +36,15 @@ final class AppPreferences: ObservableObject {
         didSet { UserDefaults.standard.set(notifyWhenBuildsFinish, forKey: Keys.notifyBuilds) }
     }
 
+    /// Whether to skip the game's start / settings window when launching.
+    @Published var skipGameLauncher: Bool {
+        didSet { UserDefaults.standard.set(skipGameLauncher, forKey: Keys.skipGameLauncher) }
+    }
+
     init() {
         let defaults = UserDefaults.standard
         notifyWhenBuildsFinish = defaults.object(forKey: Keys.notifyBuilds) as? Bool ?? true
+        skipGameLauncher = defaults.object(forKey: Keys.skipGameLauncher) as? Bool ?? true
         prodKeysPath = defaults.string(forKey: Keys.prodKeys) ?? ""
         customRepoPath = defaults.string(forKey: NXPaths.customRepoPathKey) ?? ""
         defaultGameLanguage = defaults.string(forKey: Keys.gameLanguage)

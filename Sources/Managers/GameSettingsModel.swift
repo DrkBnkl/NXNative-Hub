@@ -43,13 +43,14 @@ final class GameSettingsModel: ObservableObject {
     @Published var rumbleGain: Double = 1.0        // DM_RUMBLE_GAIN
     @Published var fullscreen: Bool = false        // DM_FULLSCREEN
     @Published var language: String = ""          // DM_LANG
+    @Published var skipLauncher: Bool = true       // DM_LAUNCHER (true = 0: skip window, false = 1: show window)
 
     @Published var statusMessage: StatusMessage?
 
     /// Keys the legacy editor writes to env.txt (also cleaned up when migrating to the settings list).
     static let managedKeys: Set<String> = [
         "DM_FPS_TARGET", "DM_OPMODE", "DM_PRESENT_UPSCALE", "DM_SHOW_FPS", "DM_METAL_HUD",
-        "DM_PRESENT_SNAP", "DM_RUMBLE", "DM_RUMBLE_GAIN", "DM_FULLSCREEN", "DM_LANG"
+        "DM_PRESENT_SNAP", "DM_RUMBLE", "DM_RUMBLE_GAIN", "DM_FULLSCREEN", "DM_LANG", "DM_LAUNCHER"
     ]
 
     var hasGame: Bool { !titleId.isEmpty }
@@ -65,6 +66,12 @@ final class GameSettingsModel: ObservableObject {
         let envValues = EnvFile.load(path: envFilePath)?.values ?? [:]
         list = appPath.flatMap { LauncherSettingsList.load(appPath: $0) }
         bundleId = appPath.flatMap { GameBundleInfo(appPath: $0)?.bundleId } ?? ""
+
+        if let launcherVal = envValues["DM_LAUNCHER"] {
+            skipLauncher = (launcherVal == "0")
+        } else {
+            skipLauncher = AppPreferences.shared.skipGameLauncher
+        }
 
         if let list = list, let appPath = appPath {
             let bundleEnv = EnvFile.load(path: NXPaths.bundleEnvFilePath(appPath: appPath))?.values ?? [:]
@@ -108,6 +115,7 @@ final class GameSettingsModel: ObservableObject {
     }
 
     func resetToDefaults() {
+        skipLauncher = AppPreferences.shared.skipGameLauncher
         if let list = list {
             for row in list.usableSettings where isEditable(row) {
                 values[row.env] = row.defaultValue
@@ -139,6 +147,7 @@ final class GameSettingsModel: ObservableObject {
             case "DM_RUMBLE_GAIN": rumbleGain = Double(val) ?? 1.0
             case "DM_FULLSCREEN": fullscreen = (val == "1")
             case "DM_LANG": language = val
+            case "DM_LAUNCHER": skipLauncher = (val == "0")
             default: break
             }
         }
@@ -185,10 +194,14 @@ final class GameSettingsModel: ObservableObject {
         }
 
         // Move listed values out of env.txt: env.txt would otherwise win over the saved choices.
-        if let existing = EnvFile.load(path: envFilePath) {
-            let keysToRemove = Set(list.usableSettings.map { $0.env }).union(Self.managedKeys)
-                .subtracting(pinnedByEnvFile.keys)
-            let remaining = existing.unmanagedLines(managedKeys: keysToRemove)
+        let existing = EnvFile.load(path: envFilePath)
+        let keysToRemove = Set(list.usableSettings.map { $0.env }).union(Self.managedKeys)
+            .subtracting(pinnedByEnvFile.keys)
+        var remaining = existing?.unmanagedLines(managedKeys: keysToRemove) ?? []
+        if skipLauncher {
+            remaining.insert("DM_LAUNCHER=0", at: 0)
+        }
+        if let existing = existing {
             if remaining != existing.lines {
                 do {
                     if remaining.isEmpty {
@@ -202,6 +215,16 @@ final class GameSettingsModel: ObservableObject {
                                   "Could not update env.txt: \(error.localizedDescription)"), isError: true)
                     return false
                 }
+            }
+        } else if skipLauncher {
+            do {
+                let dir = NXPaths.gameConfigDirectory(titleId: titleId)
+                try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+                try "DM_LAUNCHER=0\n".write(toFile: envFilePath, atomically: true, encoding: .utf8)
+            } catch {
+                showStatus(tr("env.txt konnte nicht erstellt werden: \(error.localizedDescription)",
+                              "Could not create env.txt: \(error.localizedDescription)"), isError: true)
+                return false
             }
         }
         hasEnvValuesToMigrate = false
@@ -237,6 +260,7 @@ final class GameSettingsModel: ObservableObject {
         // Windowed = key absent, so nxnative uses its default.
         lines.append(fullscreen ? "DM_FULLSCREEN=1" : "# DM_FULLSCREEN=1")
         if !language.isEmpty { lines.append("DM_LANG=\(language)") }
+        if skipLauncher { lines.append("DM_LAUNCHER=0") }
 
         let preserved = existing.unmanagedLines(managedKeys: Self.managedKeys)
         if !preserved.isEmpty {
@@ -262,7 +286,7 @@ final class GameSettingsModel: ObservableObject {
     func saveAndLaunch() -> Bool {
         guard save() else { return false }
         if let app = associatedAppPath, FileManager.default.fileExists(atPath: app) {
-            GameActions.launch(appPath: app)
+            GameActions.launch(appPath: app, titleId: titleId)
         }
         return true
     }

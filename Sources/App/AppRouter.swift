@@ -21,11 +21,30 @@ final class AppRouter: ObservableObject {
 
 enum GameActions {
     static func launch(_ game: InstalledGame) {
-        launch(appPath: game.path)
+        launch(appPath: game.path, titleId: game.titleId)
     }
 
-    static func launch(appPath: String) {
-        NSWorkspace.shared.open(URL(fileURLWithPath: appPath))
+    static func launch(appPath: String, titleId: String? = nil) {
+        let tid = titleId ?? GameBundleInfo(appPath: appPath)?.titleId
+        var skipLauncher = AppPreferences.shared.skipGameLauncher
+        if let tid = tid {
+            let envValues = EnvFile.load(path: NXPaths.envFilePath(titleId: tid))?.values
+            if let val = envValues?["DM_LAUNCHER"] {
+                skipLauncher = (val == "0")
+            }
+        }
+
+        let url = URL(fileURLWithPath: appPath)
+        let config = NSWorkspace.OpenConfiguration()
+        if skipLauncher {
+            config.arguments = ["--no-launcher"]
+            config.environment = ["DM_LAUNCHER": "0"]
+        }
+        NSWorkspace.shared.openApplication(at: url, configuration: config) { _, error in
+            if error != nil {
+                NSWorkspace.shared.open(url)
+            }
+        }
     }
 
     /// Opens the game settings. Does nothing (system beep) if the Info.plist has no title ID.

@@ -45,9 +45,10 @@ struct GeneralSettingsView: View {
                     .onChange(of: prefs.notifyWhenBuildsFinish) { _, enabled in
                         if enabled { Notifier.requestAuthorizationIfNeeded() }
                     }
+                Toggle(tr("Startfenster der Spiele beim Start überspringen", "Skip Game Start Window at Launch"), isOn: $prefs.skipGameLauncher)
             } footer: {
-                Text(tr("Die Spielsprache wird für neue Builds und den Stapel-Import verwendet. Mitteilungen erscheinen nur, während die App im Hintergrund ist.",
-                        "The game language is used for new builds and batch imports. Notifications appear only while the app is in the background."))
+                Text(tr("Spiele werden direkt mit den gewählten Einstellungen gestartet, ohne das nxnative-Startfenster zu öffnen. Die Spielsprache wird für neue Builds und den Stapel-Import verwendet.",
+                        "Games launch directly with configured settings without opening the nxnative start window. The game language is used for new builds and batch imports."))
             }
 
             Section {

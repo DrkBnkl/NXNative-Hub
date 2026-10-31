@@ -3,7 +3,10 @@
 All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.3.0] – 2026-10-31
+
+### Added
+- Option to skip the game's start/settings window at launch (`DM_LAUNCHER=0` / `--no-launcher`), with a global toggle in Preferences and a per-game toggle in Game Settings. The window can still be invoked on demand by holding the Option key (⌥) while launching.
 
 ### Changed
 - Focus strictly on macOS: removed iOS/iPad build target and IPA generation options.

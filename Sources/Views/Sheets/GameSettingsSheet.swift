@@ -67,6 +67,8 @@ struct GameSettingsSheet: View {
                     legacySections
                 }
 
+                launchOptionsSection
+
                 savesSection
             }
             .formStyle(.grouped)
@@ -262,6 +264,19 @@ struct GameSettingsSheet: View {
                 }
             }
             .disabled(!settings.rumble)
+        }
+    }
+
+    // MARK: Launch Options
+
+    private var launchOptionsSection: some View {
+        Section {
+            Toggle(tr("Startfenster des Spiels überspringen", "Skip game start window"), isOn: $settings.skipLauncher)
+        } header: {
+            Text(tr("Start-Optionen", "Launch Options"))
+        } footer: {
+            Text(tr("Startet das Spiel direkt mit den festgelegten Parametern (Sprache, FPS usw.), ohne das nxnative-Startfenster zu öffnen. Bei gedrückter Wahltaste (⌥) beim Start wird das Fenster weiterhin angezeigt.",
+                    "Starts the game directly with the configured parameters (language, FPS, etc.) without opening the nxnative start window. Holding Option (⌥) at launch will still show the window."))
         }
     }
 

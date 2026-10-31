@@ -17,16 +17,6 @@ A native macOS companion app for [nxnative](https://github.com/seedds/nxnative):
 - **Setup check** – detects missing prerequisites (Xcode, Metal toolchain, Homebrew tools, .NET, Python, prod.keys) and fixes most of them with one click.
 - **Diagnostics** – clear error messages for failed builds, build and game logs, bug reports for nxnative issues, notifications when long builds finish.
 
-## Screenshots
-
-| Game Library & Update Indicators | Recompilation Status Details |
-|---|---|
-| ![Game Library](docs/screenshots/01-library-update-indicators.png) | ![Recompilation Status Sheet](docs/screenshots/02-status-sheet.png) |
-
-| Game Settings | Game Builder |
-|---|---|
-| ![Game Settings](docs/screenshots/04-game-settings.png) | ![Game Builder](docs/screenshots/03-builder.png) |
-
 ## Requirements
 
 NXNative Hub itself runs on macOS 14 or later. Building games with nxnative needs:

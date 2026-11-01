@@ -3,6 +3,14 @@
 All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- Save sync between Astris and nxnative in the game settings, with verified backups of both sides and automatic sync after a tested approval.
+
+### Fixed
+- Importing from Ryujinx could pick a device save instead of the user's own save.
+
 ## [1.0.0] – 2026-10-31
 
 ### Initial Release

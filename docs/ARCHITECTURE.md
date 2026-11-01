@@ -91,6 +91,8 @@ Installed titles are continuously evaluated against upstream changes:
 | `~/NXNative/Import` | Incoming directory for batch processing | `ImportBatchManager` |
 | `~/NXNative/build_live.log` | Real-time log capture of current build operations | `LiveLogWriter` |
 | `~/Library/Application Support/nxnative/<TitleID>/` | `env.txt` and save directories (`save/`, `save_backup_<date>`) | `GameSettingsModel`, `SaveGameImporter` |
+| `~/NXNative/SaveSync` | Save sync state (`state.json`) and journals of running syncs (`pending/`) | `SaveSyncManager`, `SaveSyncEngine` |
+| `~/NXNative/SaveBackups/<TitleID>/<kind>` | Verified backups of both sides before every sync, the last 10 of each side | `SaveSyncEngine` |
 | `~/Library/Preferences/org.nxnative.<TitleID>.plist` | Saved runtime choices (`launcher.*`) | `SavedChoices` |
 | `~/Library/Logs/nxnative/<TitleID>.log` | Execution logs of previous game sessions | `GameDiagnostics` |
 

@@ -40,9 +40,12 @@ enum GameActions {
             config.arguments = ["--no-launcher"]
             config.environment = ["DM_LAUNCHER": "0"]
         }
-        NSWorkspace.shared.openApplication(at: url, configuration: config) { _, error in
-            if error != nil {
-                NSWorkspace.shared.open(url)
+        // An approved save is brought up to date first, so the game starts from the newest state.
+        SaveSyncManager.shared.syncApproved(titleId: tid) {
+            NSWorkspace.shared.openApplication(at: url, configuration: config) { _, error in
+                if error != nil {
+                    NSWorkspace.shared.open(url)
+                }
             }
         }
     }

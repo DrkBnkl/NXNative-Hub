@@ -70,6 +70,8 @@ struct GameSettingsSheet: View {
                 launchOptionsSection
 
                 savesSection
+
+                SaveSyncSection(titleId: settings.titleId)
             }
             .formStyle(.grouped)
 

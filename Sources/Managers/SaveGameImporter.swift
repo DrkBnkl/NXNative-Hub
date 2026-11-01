@@ -59,26 +59,12 @@ enum SaveGameImporter {
 
     /// Finds the Ryujinx save folder by the title ID stored in ExtraData0.
     static func ryujinxSavePath(titleId: String) -> String? {
-        guard let tidNum = UInt64(titleId, radix: 16) else { return nil }
-        let fm = FileManager.default
-        let home = NXPaths.home
-        let saveRoots = [
-            "\(home)/Library/Containers/V380-Ori.Astris/Data/Library/Application Support/Ryujinx/bis/user/save",
-            "\(home)/Library/Application Support/Ryujinx/bis/user/save"
-        ]
-
-        for root in saveRoots {
-            guard let folders = try? fm.contentsOfDirectory(atPath: root) else { continue }
-            for folderName in folders {
-                let folder = (root as NSString).appendingPathComponent(folderName)
-                let extra = (folder as NSString).appendingPathComponent("ExtraData0")
-                guard let data = try? Data(contentsOf: URL(fileURLWithPath: extra)), data.count >= 8 else { continue }
-                let tid = data.withUnsafeBytes { $0.loadUnaligned(as: UInt64.self) }
-                if UInt64(littleEndian: tid) == tidNum {
-                    let inner = (folder as NSString).appendingPathComponent("0")
-                    return fm.fileExists(atPath: inner) ? inner : folder
-                }
-            }
+        for root in AstrisSaves.dataRoots {
+            // A game can have several slots, such as a device save; the import target is the user's own save.
+            let slots = AstrisSaves.slots(inDataRoot: root)
+            guard let slot = AstrisSaves.slot(titleId: titleId, kind: .account, in: slots,
+                                              lastOpenedUser: AstrisSaves.lastOpenedUser(inDataRoot: root)) else { continue }
+            return FileManager.default.fileExists(atPath: slot.committed.path) ? slot.committed.path : slot.url.path
         }
         return nil
     }

@@ -6,38 +6,67 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ## [Unreleased]
 
 ### Added
-- Game settings are drawn from each game's `launcher.json`: every setting the game offers (e.g. 120 fps, render scale, Switch 2 controllers, the game's own languages), with its tested default.
-- Setup check for macOS 26.6, Xcode 27.2, the Metal toolchain and its version, and the Homebrew tools, with one-click install of the Metal toolchain and the Homebrew tools.
-- Switch 2 games: build from a `.nup` file or a dump folder (`base/`, `updates/`, `dlc/`) in the builder and the batch import, without prod.keys (a dropped `.nup` file is built itself, whatever lies beside it; dumps without `base/` are recognized); title ID, versions and profile are read from the container or `main.npdm`.
+- Switch 2 games: build from a `.nup` file or a dump folder (`base/`, `updates/`, `dlc/`) in the builder and the batch import, without prod.keys; a dropped `.nup` file is built itself, and dumps without `base/` are recognized.
 - Switch 2 games as NSP/XCI are recognized and marked as not buildable yet, with a hint to use a `.nup` file or dump folder.
-- "Refresh" button in the game import list to rescan the Import folder.
-- The Build Game overview lists the games in the Import folder, with checkboxes to pick the games to convert, refresh, Show in Finder and Move to Trash (asks first; not while a build runs).
+- "Switch 2" badge in the library, the import list and the builder; warning when a Switch 2 game has no nxnative profile.
+- The Build Game overview lists the games in the Import folder, with checkboxes, refresh, Show in Finder and Move to Trash (asks first; not while a build runs).
 - Option in the batch import to move source files to the Trash after a successful conversion.
-- "Switch 2" badge in the library, the import list and the builder; warning when a Switch 2 game has no nxnative profile or is built as an IPA.
+- Setup check: the Metal compiler version is compared with nxnative's `dmsh_chain.lock`.
+- Save sync between Astris and nxnative in the game settings, with verified backups of both sides and automatic sync after a tested approval.
 
 ### Changed
-- Game settings are saved as the game's saved choices (only values that differ from the tested default) instead of `env.txt`, so newer tested defaults apply and the game's own settings window shows the same values. "Save & Launch" skips the game's own settings window.
-- Settings that Hub 1.1 wrote into `env.txt` are moved once: values equal to the old Hub defaults are dropped (MetalFX upscaling and frame buffering are then off unless the game's default says otherwise), other values become saved choices, and a choice the game's settings list does not offer stays in `env.txt`; the old file is kept as `env.txt.hub-1.1.bak`.
-- The setup check requires Python 3.12 (arm64) and `backports.zstd` before Python 3.14 instead of `zstandard`; "Create venv" replaces a venv with an older Python.
-- The game language for builds offers every code nxnative takes (`en-US`, `en-GB`, `fr-CA`, `es-419`, `pt-BR`, `ru`, …); a saved `en` becomes `en-US`.
-- The updater no longer runs `dotnet build` for nx_extract (a native tool since nxnative 641636e2); the .NET check is removed.
+- Batch import keeps the source files (NSP / XCI / NUP) in the Import folder by default.
 - After a build, the Hub opens or moves exactly the app the build announced, not any `.app` in the game folder.
 - Save import replaces the save as a whole; the current save is kept as `save_backup_<time>`, and nothing changes if that backup fails. Import is refused while the game runs and warns when the game syncs with a cloud saves folder.
-- Batch import keeps the source files (NSP / XCI / NUP) in the Import folder by default.
+- The game language for builds offers every code nxnative takes (`en-US`, `en-GB`, `fr-CA`, `es-419`, `pt-BR`, `ru`, …); a saved `en` becomes `en-US`.
+- The setup check follows current nxnative: Xcode 27.2, the Python packages `zbic` and capstone 5.x, and no .NET SDK (nx_extract is a native tool since nxnative 641636e2; the updater no longer rebuilds it).
+- A missing prod.keys is a setup warning instead of a blocking issue; NSP/XCI builds still require it.
 - The setup sheet opens by itself at launch only for missing prerequisites it has not shown before.
-- A game built without a settings list can still be launched from its settings sheet.
-- A missing prod.keys is now a setup warning instead of a blocking issue; NSP/XCI builds still require it.
-- The setup check also requires the Python packages `nsz` and `zbic` (and capstone 5.x), as current nxnative does.
 
-## [1.1.0] – 2026-10-27
+### Fixed
+- Importing from Ryujinx could pick a device save instead of the user's own save.
 
-### Added
-- Game library with search, per-game badges, double-click to launch and context menu.
-- Builder for Mac apps and unsigned IPAs with live progress, log and advanced options (game language, FPS counter, keep extracted data, app name).
-- Batch import from `~/NXNative/Import` with compatibility check against the nxnative game profiles; processed source files are moved to the Trash.
-- Per-game settings stored in `env.txt` (frame rate, console mode, MetalFX, full screen, Metal HUD, FPS counter, rumble, language).
-- Save import from JKSV, Checkpoint and Ryujinx with automatic backup.
-- nxnative updater (git, Python packages, nx_extract).
-- Detection of running builds, including builds started in Terminal.
-- Setup check with one-click fixes; custom nxnative folder.
-- Settings window, German and English UI.
+## [1.0.0] – 2026-10-31
+
+### Initial Release
+
+**NXNative Hub** – Native macOS companion app and management suite for [nxnative](https://github.com/seedds/nxnative) on Apple Silicon.
+
+#### Features
+- **Centralized Game Library**:
+  - Management of converted native macOS applications with version, size, build commit, and active configuration badges.
+  - Real-time search by game name and 16-character Title ID.
+  - Direct launch via double-click or `⌘↩`.
+  - Option to bypass the internal game settings window at launch (`DM_LAUNCHER=0` / `--no-launcher`) with global and per-game toggles, preserving the Option key (`⌥`) manual escape hatch.
+  - Context menu actions: Open Game Log, Open Previous Launch Log, Open in Finder, and Create Bug Report.
+
+- **Game Builder & Batch Import**:
+  - Convert Nintendo Switch game dumps (`.nsp` / `.xci`) into standalone Apple Silicon applications (`.app`).
+  - Real-time compilation tracking with stage progression, integer percentage, and streaming log output.
+  - Disk space estimation comparing required storage against free disk space.
+  - Incremental rebuild detection (`<titleID>_build`) for faster subsequent builds.
+  - Batch import converting all queued dumps in `~/NXNative/Import` with pre-flight game profile verification.
+  - Non-destructive workflow: source dump files are moved to the system Trash upon completion.
+
+- **Configuration Engine**:
+  - Dynamic form generation parsing the game's native `launcher.json` manifest.
+  - Granular control over frame rate limits, handheld/docked mode, render scale multipliers, MetalFX upscaling, Metal HUD, and frame buffering.
+  - Audio and haptic settings with adjustable rumble gain sliders.
+  - Per-game runtime language overrides.
+  - Persistence via macOS preferences (`saved_choices`) without overriding tested profile defaults.
+  - Legacy `env.txt` support for older nxnative builds.
+
+- **Update & Recompilation Intelligence**:
+  - Per-game update indicators evaluating installed titles against upstream engine commits, profile updates, and shader translation chain improvements.
+  - Interactive status sheet detailing commit differences, shader versions, and recompilation recommendations.
+  - In-app updater for upstream nxnative repository, Python packages, and toolchain dependencies.
+
+- **Environment Diagnostics & Save Management**:
+  - Automated setup checklist verifying macOS version, Xcode, Metal toolchain, Homebrew utilities, .NET SDK, Python 3.12+, and `prod.keys`.
+  - One-click installation and remediation for missing dependencies.
+  - Save game import supporting JKSV, Checkpoint, and Ryujinx archives with automated timestamped backups.
+
+- **User Interface & Automation**:
+  - Full bilingual localization in German and English with instantaneous runtime switching.
+  - Apple Human Interface Guidelines compliant SwiftUI interface.
+  - Automated GitHub Actions CI workflow building and packaging releases on Apple Silicon runners (`macos-15`).

@@ -164,6 +164,8 @@ struct BuilderView: View {
                 Text(tr("In diesem Ordner wurden keine .nsp-, .xci- oder .nup-Dateien und kein Switch-2-Dump (base/exefs, base/romfs) gefunden.",
                         "No .nsp, .xci or .nup files and no Switch 2 dump (base/exefs, base/romfs) were found in this folder."))
                     .foregroundStyle(.orange)
+            } else if !form.detectedFiles.isEmpty {
+                sourceFooter
             }
         }
     }
@@ -197,6 +199,31 @@ struct BuilderView: View {
                       systemImage: "exclamationmark.triangle.fill")
                     .font(.caption)
                     .foregroundStyle(.orange)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var sourceFooter: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if form.hasPreviousBuild {
+                Label(tr("Ein früherer Build wurde gefunden – nxnative verwendet ihn wieder, der Neubau geht deutlich schneller.",
+                         "A previous build was found – nxnative reuses it, so this build is much faster."),
+                      systemImage: "bolt.fill")
+            }
+            if let space = form.diskSpace {
+                if space.isSufficient {
+                    Text(tr("Freier Speicher: \(DiskSpaceEstimate.format(space.available)) (benötigt etwa \(DiskSpaceEstimate.format(space.required)))",
+                            "Free space: \(DiskSpaceEstimate.format(space.available)) (about \(DiskSpaceEstimate.format(space.required)) needed)"))
+                } else {
+                    Label(form.hasPreviousBuild
+                          ? tr("Wenig Speicher frei: \(DiskSpaceEstimate.format(space.available)). Ein erster Build braucht etwa \(DiskSpaceEstimate.format(space.required)); ein Neubau meist deutlich weniger.",
+                               "Low disk space: \(DiskSpaceEstimate.format(space.available)). A first build needs about \(DiskSpaceEstimate.format(space.required)); a rebuild usually much less.")
+                          : tr("Zu wenig Speicher frei: \(DiskSpaceEstimate.format(space.available)) – der Build braucht etwa \(DiskSpaceEstimate.format(space.required)) (doppelte Spielgröße + 10 GB).",
+                               "Not enough disk space: \(DiskSpaceEstimate.format(space.available)) – the build needs about \(DiskSpaceEstimate.format(space.required)) (twice the game size + 10 GB)."),
+                          systemImage: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                }
             }
         }
     }
@@ -259,15 +286,7 @@ struct BuilderView: View {
             .pickerStyle(.segmented)
             .disabled(isLocked)
         } footer: {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(form.platform.subtitle)
-                if form.isSwitch2 && form.platform == .ios {
-                    Label(tr("Switch-2-Spiele sind von nxnative nur auf dem Mac getestet – die IPA startet möglicherweise nicht.",
-                             "nxnative has tested Switch 2 games on the Mac only – the IPA may not start."),
-                          systemImage: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.orange)
-                }
-            }
+            Text(form.platform.subtitle)
         }
     }
 
@@ -378,9 +397,23 @@ struct BuildProgressView: View {
             }
 
             if let error = manager.errorMessage {
-                Label(error, systemImage: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.red)
+                Label(error, systemImage: manager.wasCancelled ? "stop.circle.fill" : "exclamationmark.triangle.fill")
+                    .foregroundStyle(manager.wasCancelled ? Color.secondary : Color.red)
                     .textSelection(.enabled)
+            }
+
+            if let logsPath = manager.buildLogsPath {
+                HStack {
+                    Text(tr("Die vollständige Ausgabe aller Werkzeuge liegt im Build-Ordner.",
+                            "The complete output of all tools is in the build folder."))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button(tr("Build-Logs öffnen", "Open Build Logs")) {
+                        FilePanels.openInFinder(logsPath)
+                    }
+                    .controlSize(.small)
+                }
             }
 
             DisclosureGroup(isExpanded: $showLog) {
@@ -410,6 +443,10 @@ struct BuildProgressView: View {
             Label(tr("Build erfolgreich abgeschlossen", "Build completed successfully"), systemImage: "checkmark.seal.fill")
                 .font(.headline)
                 .foregroundStyle(.green)
+        } else if manager.wasCancelled {
+            Label(tr("Build abgebrochen", "Build cancelled"), systemImage: "stop.circle")
+                .font(.headline)
+                .foregroundStyle(.secondary)
         } else if manager.isFinished {
             Label(tr("Build fehlgeschlagen", "Build failed"), systemImage: "xmark.octagon.fill")
                 .font(.headline)

@@ -6,6 +6,7 @@ struct GameRowView: View {
     let game: InstalledGame
     let onPlay: () -> Void
     let onSettings: () -> Void
+    let onShowStatus: () -> Void
 
     var body: some View {
         HStack(spacing: 12) {
@@ -16,9 +17,19 @@ struct GameRowView: View {
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 3) {
-                Text(game.name)
-                    .font(.headline)
-                    .lineLimit(1)
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(game.name)
+                        .font(.headline)
+                        .lineLimit(1)
+
+                    if let badge = game.updateStatus.badge {
+                        Button(action: onShowStatus) {
+                            BadgeView(text: badge.text, systemImage: badge.icon, color: badge.color)
+                        }
+                        .buttonStyle(.plain)
+                        .help(game.updateStatus.tooltip)
+                    }
+                }
 
                 HStack(spacing: 6) {
                     Text(game.titleId)
@@ -35,12 +46,10 @@ struct GameRowView: View {
                     if SwitchTitleID.isSwitch2(game.titleId) {
                         BadgeView(text: "Switch 2", color: .red)
                     }
-                    if let fps = game.fpsTarget {
-                        BadgeView(text: "\(fps) FPS", color: fps == "30" ? .blue : .green)
+                    if !game.fpsTarget.isEmpty {
+                        BadgeView(text: "\(game.fpsTarget) FPS", color: game.fpsTarget == "60" ? .green : .blue)
                     }
-                    if let docked = game.isDocked {
-                        BadgeView(text: docked ? "Docked" : "Handheld", color: .purple)
-                    }
+                    BadgeView(text: game.isDocked ? "Docked" : "Handheld", color: .purple)
                     if game.upscaling == "metalfx" {
                         BadgeView(text: "MetalFX", color: .orange)
                     }

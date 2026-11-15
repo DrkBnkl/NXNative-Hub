@@ -1,264 +1,241 @@
 import Foundation
+import CoreFoundation
 
-// MARK: - launcher.json (a built game's settings list)
+// MARK: - Settings list of a built game (launcher.json)
 //
-// Upstream contract: nxnative docs/frontends.md ("The settings list", "Saved choices") and
-// docs/launcher.schema.json (schema 1). A Mac app carries the list in
-// Contents/Resources/dm/launcher.json. The semantics follow upstream's own reader
-// (dm/ios/Sources/LauncherSettings.swift) and the Mac launcher (dm/mac/launcher.c), so the
-// Hub, the game's own settings window and a start from Finder all agree.
+// Every Mac app built by a current nxnative carries `Contents/Resources/dm/launcher.json`:
+// the settings the game offers, with its tested defaults resolved for the Mac.
+// Reference: nxnative docs/frontends.md ("The settings list") and docs/launcher.schema.json.
+//
+// Compatibility rules from upstream (schema 1):
+//  - unknown fields are ignored, unknown sections are shown under their own name,
+//  - a row with an unknown `kind` is skipped (a new kind would mean schema 2).
 
-struct LauncherSetting: Decodable, Identifiable, Hashable {
+struct LauncherSetting: Decodable, Identifiable, Equatable {
+    enum Kind: String {
+        case choice, range, toggle
+    }
+
     let env: String
-    let kind: String          // choice | range | toggle (schema 1)
+    let kindName: String
+    let section: String
     let label: String
     let note: String
     let defaultValue: String
-    let section: String?
-    let needs: String?        // "<VAR>=<value>": drawn only while that row has that value
-    let level: String?        // "basic": shown first
-    let options: [[String]]?  // choice: [value, label]
+    let options: [[String]]?
     let min: Double?
     let max: Double?
     let step: Double?
     let on: String?
     let off: String?
+    let base: RenderBase?
+    let level: String?
+    let needs: String?
 
     var id: String { env }
-    var sectionTitle: String { section ?? "Game" }
+    var kind: Kind? { Kind(rawValue: kindName) }
     var isBasic: Bool { level == "basic" }
+
+    struct RenderBase: Decodable, Equatable {
+        let docked: [Int]
+        let handheld: [Int]
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case env, kind, section, label, note, options, min, max, step, on, off, base, level, needs
+        case defaultValue = "default"
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        env = try c.decode(String.self, forKey: .env)
+        kindName = try c.decode(String.self, forKey: .kind)
+        section = (try? c.decode(String.self, forKey: .section)) ?? "Game"
+        label = (try? c.decode(String.self, forKey: .label)) ?? env
+        note = (try? c.decode(String.self, forKey: .note)) ?? ""
+        defaultValue = (try? c.decode(String.self, forKey: .defaultValue)) ?? ""
+        options = try? c.decode([[String]].self, forKey: .options)
+        min = try? c.decode(Double.self, forKey: .min)
+        max = try? c.decode(Double.self, forKey: .max)
+        step = try? c.decode(Double.self, forKey: .step)
+        on = try? c.decode(String.self, forKey: .on)
+        off = try? c.decode(String.self, forKey: .off)
+        base = try? c.decode(RenderBase.self, forKey: .base)
+        level = try? c.decode(String.self, forKey: .level)
+        needs = try? c.decode(String.self, forKey: .needs)
+    }
+
+    struct Choice: Hashable {
+        let value: String
+        let label: String
+    }
+
+    /// `[value, label]` pairs of a choice row (malformed pairs are dropped).
+    var choices: [Choice] {
+        (options ?? []).compactMap { $0.count >= 2 ? Choice(value: $0[0], label: $0[1]) : nil }
+    }
+
     var onValue: String { on ?? "1" }
     var offValue: String { off ?? "0" }
 
-    /// Schema 1 knows three kinds; a row of another kind cannot be drawn.
-    var isSupportedKind: Bool { ["choice", "range", "toggle"].contains(kind) }
+    /// The condition of a sub-setting: `DM_RUMBLE=1` → ("DM_RUMBLE", "1").
+    var condition: (env: String, value: String)? {
+        guard let needs = needs else { return nil }
+        let parts = needs.split(separator: "=", maxSplits: 1).map(String.init)
+        return parts.count == 2 ? (parts[0], parts[1]) : nil
+    }
 
-    /// A range compares as numbers (a slider may write "1.00" for "1.0").
+    /// Whether the current build still offers `value` (upstream "validation on read").
+    func accepts(_ value: String) -> Bool {
+        switch kind {
+        case .choice:
+            return choices.contains { $0.value == value }
+        case .toggle:
+            return value == onValue || value == offValue
+        case .range:
+            guard let number = Double(value), let min = min, let max = max else { return false }
+            let epsilon = 1e-9
+            return number >= min - epsilon && number <= max + epsilon
+        case nil:
+            return false
+        }
+    }
+
+    /// True if `value` means the same as the tested default (ranges compare numerically).
     func isDefault(_ value: String) -> Bool {
-        if kind == "range" {
-            guard let a = Double(value), let b = Double(defaultValue) else { return value == defaultValue }
-            return abs(a - b) < 1e-6
+        if kind == .range, let a = Double(value), let b = Double(defaultValue) {
+            return abs(a - b) < 1e-9
         }
         return value == defaultValue
     }
 
-    /// Whether this build still offers the value (the check the Mac launcher applies to saved choices).
-    func accepts(_ value: String) -> Bool {
-        switch kind {
-        case "choice":
-            return options?.contains { $0.first == value } ?? false
-        case "range":
-            guard !value.isEmpty, value.first?.isWhitespace == false,
-                  !value.contains(where: { $0 == "x" || $0 == "X" }),
-                  let n = Double(value), n.isFinite, let lo = min, let hi = max else { return false }
-            return n >= lo && n <= hi
-        case "toggle":
-            return value == onValue || value == offValue
-        default:
-            return false
+    // MARK: Ranges
+
+    /// Number of decimals implied by the step (0.05 → 2, 0.1 → 1, 1 → 0).
+    var stepDecimals: Int {
+        guard let step = step, step > 0 else { return 2 }
+        var decimals = 0
+        var scaled = step
+        while decimals < 4 && abs(scaled.rounded() - scaled) > 1e-9 {
+            scaled *= 10
+            decimals += 1
         }
+        return decimals
     }
 
-    /// The value written for a range, with as many decimals as the step needs.
-    func formatRange(_ value: Double) -> String {
-        let decimals: Int
-        if let step, step > 0 {
-            var d = 0
-            var s = step
-            while d < 4 && abs(s.rounded() - s) > 1e-9 { s *= 10; d += 1 }
-            decimals = d
-        } else {
-            decimals = 2
-        }
-        return String(format: "%.\(decimals)f", value)
+    func formatRange(_ number: Double) -> String {
+        String(format: "%.\(stepDecimals)f", number)
     }
 
-    /// The variable and value of `needs`, if any.
-    var requirement: (key: String, value: String)? {
-        guard let needs, let eq = needs.firstIndex(of: "=") else { return nil }
-        return (String(needs[..<eq]), String(needs[needs.index(after: eq)...]))
+    /// Ranges are shown as a percentage, like the game's own settings window.
+    func percentText(_ value: String) -> String {
+        guard let number = Double(value) else { return value }
+        return "\(Int((number * 100).rounded())) %"
     }
 
-    enum CodingKeys: String, CodingKey {
-        case env, kind, label, note, section, needs, level, options, min, max, step, on, off
-        case defaultValue = "default"
+    /// Render scale only: the resulting 3D size for the chosen console mode, e.g. "1440×810".
+    func resolutionText(_ value: String, docked: Bool) -> String? {
+        guard let base = base, let scale = Double(value) else { return nil }
+        let size = docked ? base.docked : base.handheld
+        guard size.count == 2 else { return nil }
+        return "\(Int((Double(size[0]) * scale).rounded()))×\(Int((Double(size[1]) * scale).rounded()))"
     }
 }
 
-struct LauncherSettingsFile: Decodable {
+struct LauncherSettingsList: Decodable {
     let schema: Int?
-    let game: String?
+    let game: String
     let settings: [LauncherSetting]
 
-    /// `Contents/Resources/dm/launcher.json` of a Mac app.
-    static func path(appPath: String) -> String {
-        URL(fileURLWithPath: appPath).appendingPathComponent("Contents/Resources/dm/launcher.json").path
+    /// Rows the app can show (known kinds only).
+    var usableSettings: [LauncherSetting] { settings.filter { $0.kind != nil } }
+
+    /// Section names in order of their first row.
+    var sections: [String] {
+        var seen: [String] = []
+        for row in usableSettings where !seen.contains(row.section) { seen.append(row.section) }
+        return seen
     }
 
-    /// Loads the list. Returns nil if the app has none (built before the list existed, or an
-    /// unknown schema); such an app has no settings to offer.
-    static func load(appPath: String) -> LauncherSettingsFile? {
-        guard let data = FileManager.default.contents(atPath: path(appPath: appPath)),
-              let file = try? JSONDecoder().decode(LauncherSettingsFile.self, from: data) else { return nil }
-        if let schema = file.schema, schema != 1 { return nil }
-        return file
+    var hasBasicRows: Bool { usableSettings.contains { $0.isBasic } }
+
+    func setting(_ env: String) -> LauncherSetting? {
+        usableSettings.first { $0.env == env }
     }
 
-    var drawableSettings: [LauncherSetting] { settings.filter(\.isSupportedKind) }
+    /// Reads the list of a built Mac app; nil for builds made before nxnative shipped it.
+    static func load(appPath: String) -> LauncherSettingsList? {
+        let url = URL(fileURLWithPath: NXPaths.launcherListPath(appPath: appPath))
+        guard let data = try? Data(contentsOf: url),
+              let list = try? JSONDecoder().decode(LauncherSettingsList.self, from: data),
+              (list.schema ?? 1) == 1,
+              !list.usableSettings.isEmpty else { return nil }
+        return list
+    }
+
+    /// Localized heading for the sections nxnative uses today; unknown ones keep their name.
+    static func localizedSection(_ name: String) -> String {
+        switch name {
+        case "Game": return tr("Spiel", "Game")
+        case "Controls": return tr("Steuerung", "Controls")
+        case "Performance": return tr("Leistung", "Performance")
+        default: return name
+        }
+    }
 }
 
 // MARK: - Saved choices (the game's own preferences domain)
 //
-// One string per setting under `launcher.<ENV>` in the app's CFBundleIdentifier domain. Only
-// choices that differ from the tested default are kept, so a later build's defaults reach
-// the player.
+// The Mac app reads `launcher.<VAR>` strings from its preferences domain (its bundle ID)
+// for every variable that neither the launch environment nor an env.txt sets.
+// Only values that differ from the tested default are stored; a key is removed when the
+// player picks the default again (docs/frontends.md, "Saved choices").
 
-struct SavedChoices {
-    let bundleId: String
+enum SavedChoices {
+    private static func key(_ env: String) -> CFString { "launcher.\(env)" as CFString }
 
-    /// Reads the domain from disk once, so choices the game's own window saved are seen.
-    init(bundleId: String) {
-        self.bundleId = bundleId
+    /// Drops this process's cached copy of the domain, so changes the game's own
+    /// settings window made are seen.
+    static func refresh(bundleId: String) {
         CFPreferencesAppSynchronize(bundleId as CFString)
     }
 
-    private var domain: CFString { bundleId as CFString }
-    private static func key(_ env: String) -> CFString { "launcher.\(env)" as CFString }
-
-    /// The saved string for a setting (a non-string value is ignored, as the launcher does).
-    func value(for env: String) -> String? {
-        CFPreferencesCopyAppValue(Self.key(env), domain) as? String
+    static func value(for env: String, bundleId: String) -> String? {
+        CFPreferencesCopyAppValue(key(env), bundleId as CFString) as? String
     }
 
-    func store(_ value: String, for setting: LauncherSetting) {
-        if setting.isDefault(value) {
-            CFPreferencesSetAppValue(Self.key(setting.env), nil, domain)
-        } else {
-            CFPreferencesSetAppValue(Self.key(setting.env), value as CFString, domain)
-        }
-    }
-
-    func remove(_ env: String) {
-        CFPreferencesSetAppValue(Self.key(env), nil, domain)
-    }
-
+    /// Writes `values` (nil removes the key) and synchronizes the domain.
     @discardableResult
-    func synchronize() -> Bool {
-        CFPreferencesAppSynchronize(domain)
+    static func write(_ values: [String: String?], bundleId: String) -> Bool {
+        let domain = bundleId as CFString
+        for (env, value) in values {
+            CFPreferencesSetAppValue(key(env), value.map { $0 as CFString }, domain)
+        }
+        return CFPreferencesAppSynchronize(domain)
     }
 }
 
-// MARK: - Effective settings of an installed game
+// MARK: - Effective values (what the game will actually use)
 
-/// Resolves what a game will use at the next start from Finder, in upstream's order:
-/// player's env.txt → bundle dm/env.txt → saved choices → tested defaults.
-struct GameSettingsSnapshot {
-    let settings: [LauncherSetting]
-    /// Values set by an env file: shown, not changeable in the Hub (key → value).
-    let fixed: [String: String]
-    /// Effective value per setting.
-    let values: [String: String]
-
-    init(info: GameBundleInfo) {
-        let list = LauncherSettingsFile.load(appPath: info.appPath)?.drawableSettings ?? []
-        let playerEnv = EnvFile.load(path: NXPaths.envFilePath(titleId: info.titleId))?.values ?? [:]
-        let bundleEnv = EnvFile.load(path: info.bundleEnvFilePath)?.values ?? [:]
-        let saved = info.bundleId.map(SavedChoices.init(bundleId:))
-
-        var fixed: [String: String] = [:]
-        var values: [String: String] = [:]
-        for setting in list {
-            if let v = playerEnv[setting.env] ?? bundleEnv[setting.env] {
-                fixed[setting.env] = v
-                values[setting.env] = v
-            } else if let v = saved?.value(for: setting.env), setting.accepts(v) {
-                values[setting.env] = v
+enum GameSettingsResolver {
+    /// Resolves each listed setting in the order the game's launcher uses:
+    /// player's env.txt → bundle's dm/env.txt → saved choice (if still valid) → tested default.
+    /// The launch environment (first in upstream's order) is not known here.
+    static func effectiveValues(list: LauncherSettingsList,
+                                envValues: [String: String],
+                                bundleEnvValues: [String: String],
+                                bundleId: String) -> [String: String] {
+        SavedChoices.refresh(bundleId: bundleId)
+        var result: [String: String] = [:]
+        for row in list.usableSettings {
+            if let fromEnv = envValues[row.env] ?? bundleEnvValues[row.env] {
+                result[row.env] = fromEnv
+            } else if let saved = SavedChoices.value(for: row.env, bundleId: bundleId), row.accepts(saved) {
+                result[row.env] = saved
             } else {
-                values[setting.env] = setting.defaultValue
+                result[row.env] = row.defaultValue
             }
         }
-        // Without a settings list only the env files say anything about the game.
-        if list.isEmpty {
-            values = bundleEnv.merging(playerEnv) { _, player in player }
-        }
-        self.settings = list
-        self.fixed = fixed
-        self.values = values
-    }
-}
-
-// MARK: - Migration of env.txt files written by Hub 1.1
-
-/// Hub 1.1 wrote every setting into the player's env.txt with its own defaults. env.txt wins
-/// over the game's saved choices and its settings window shows those values as fixed, so later
-/// tested defaults never applied. This moves the Hub's lines out of env.txt once:
-/// - a value equal to the Hub 1.1 default was not a choice and is dropped,
-/// - any other value this build offers becomes a saved choice (unless it is the tested default),
-/// - a choice that cannot be carried over (the build has no such setting, or does not offer
-///   the value) stays in env.txt, where it keeps applying,
-/// - lines the player wrote themselves stay in env.txt.
-/// The original file is kept as `env.txt.hub-1.1.bak` next to it.
-enum LegacyEnvMigration {
-    static let hubKeys: Set<String> = [
-        "DM_FPS_TARGET", "DM_OPMODE", "DM_PRESENT_UPSCALE", "DM_SHOW_FPS", "DM_METAL_HUD",
-        "DM_PRESENT_SNAP", "DM_RUMBLE", "DM_RUMBLE_GAIN", "DM_FULLSCREEN", "DM_LANG"
-    ]
-
-    /// What Hub 1.1 wrote when the player changed nothing (DM_LANG had no fixed default).
-    private static let hub11Defaults: [String: String] = [
-        "DM_FPS_TARGET": "60", "DM_OPMODE": "1", "DM_PRESENT_UPSCALE": "metalfx", "DM_SHOW_FPS": "1",
-        "DM_METAL_HUD": "0", "DM_PRESENT_SNAP": "1", "DM_RUMBLE": "1", "DM_RUMBLE_GAIN": "1.0"
-    ]
-
-    static func isHubGenerated(_ file: EnvFile) -> Bool {
-        guard let first = file.lines.first?.trimmingCharacters(in: .whitespaces) else { return false }
-        return first.hasPrefix("# nxnative Konfiguration für") || first.hasPrefix("# nxnative configuration for")
-    }
-
-    /// Migrates if needed. Returns true if env.txt was changed.
-    @discardableResult
-    static func migrateIfNeeded(info: GameBundleInfo) -> Bool {
-        let envPath = NXPaths.envFilePath(titleId: info.titleId)
-        guard let file = EnvFile.load(path: envPath), isHubGenerated(file),
-              let bundleId = info.bundleId,
-              let list = LauncherSettingsFile.load(appPath: info.appPath)?.drawableSettings else { return false }
-
-        let fm = FileManager.default
-        let backupPath = envPath + ".hub-1.1.bak"
-        if !fm.fileExists(atPath: backupPath) {
-            // Without a backup nothing is changed.
-            do { try fm.copyItem(atPath: envPath, toPath: backupPath) } catch { return false }
-        }
-
-        let saved = SavedChoices(bundleId: bundleId)
-        let values = file.values
-        let settings = Dictionary(list.map { ($0.env, $0) }, uniquingKeysWith: { first, _ in first })
-        // Hub lines that leave env.txt; a choice that cannot be carried over stays.
-        var movedKeys = hubKeys
-        for key in hubKeys {
-            guard var value = values[key], hub11Defaults[key] != value else { continue }
-            // Hub 1.1 wrote "en"; the settings list's code for it is "en-US".
-            if key == "DM_LANG", value == "en" { value = "en-US" }
-            guard let setting = settings[key], setting.accepts(value) else {
-                movedKeys.remove(key)
-                continue
-            }
-            // A choice the player already made in the game's own window wins.
-            if !setting.isDefault(value), saved.value(for: key) == nil { saved.store(value, for: setting) }
-        }
-        saved.synchronize()
-
-        let remaining = file.unmanagedLines(managedKeys: movedKeys)
-        do {
-            if remaining.isEmpty {
-                // The backup holds the original; the now empty file is not needed.
-                try fm.removeItem(atPath: envPath)
-            } else {
-                try (remaining.joined(separator: "\n") + "\n").write(toFile: envPath, atomically: true, encoding: .utf8)
-            }
-            return true
-        } catch {
-            return false
-        }
+        return result
     }
 }

@@ -86,10 +86,12 @@ struct SetupChecklistView: View {
             checker.createVenv(prodKeysExists: prefs.prodKeysExists)
         case .installPythonPackages:
             checker.installPythonPackages(prodKeysExists: prefs.prodKeysExists)
-        case .installMetalToolchain:
-            checker.installMetalToolchain(prodKeysExists: prefs.prodKeysExists)
-        case .installHomebrewTools:
-            checker.installHomebrewTools(prodKeysExists: prefs.prodKeysExists)
+        case .installCommandLineTools:
+            checker.installCommandLineTools(prodKeysExists: prefs.prodKeysExists)
+        case .installBrewTools:
+            checker.installBrewTools(prodKeysExists: prefs.prodKeysExists)
+        case .downloadMetalToolchain:
+            checker.downloadMetalToolchain(prodKeysExists: prefs.prodKeysExists)
         }
     }
 }
@@ -160,8 +162,10 @@ struct SetupCheckRow: View {
             return check.status == .ok ? tr("Ändern …", "Change…") : tr("Ordner wählen …", "Choose Folder…")
         case .createVenv: return tr("venv erstellen", "Create venv")
         case .installPythonPackages: return tr("Installieren", "Install")
-        case .installMetalToolchain, .installHomebrewTools: return tr("Installieren", "Install")
+        case .installCommandLineTools: return tr("Installieren …", "Install…")
         case .chooseProdKeys: return tr("Auswählen …", "Choose…")
+        case .installBrewTools: return tr("Installieren", "Install")
+        case .downloadMetalToolchain: return tr("Laden", "Download")
         }
     }
 }

@@ -9,7 +9,7 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_PATH="${1:-${HOME}/NXNative/NXNative.app}"
 PLIST_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$DIR/Info.plist" 2>/dev/null || echo "1.0.0")"
 VERSION="${2:-$PLIST_VERSION}"
-OUTPUT_ZIP="$DIR/NXNative-Companion-v${VERSION}.zip"
+OUTPUT_ZIP="$DIR/NXNative-Hub-v${VERSION}.zip"
 
 if [ ! -d "$APP_PATH" ]; then
     echo "==> Error: $APP_PATH does not exist. Run ./build.sh first." >&2

@@ -37,6 +37,7 @@ struct ContentView: View {
         .frame(minWidth: 760, minHeight: 500)
         // Forces all texts to be rebuilt when the UI language changes.
         .id(lang.currentChoice)
+        .onReceive(library.$games) { SaveSyncManager.shared.setGames($0) }
         .onAppear {
             prefs.autoDetectKeysIfNeeded()
             // Show the setup sheet once per launch, only if something required is missing.
@@ -63,6 +64,9 @@ struct ContentView: View {
         }
         .sheet(isPresented: $router.showingSetup) {
             withEnvironment(SetupSheet())
+        }
+        .sheet(item: $router.statusTargetGame) { game in
+            withEnvironment(GameStatusSheet(game: game))
         }
     }
 

@@ -20,7 +20,8 @@ struct BuildOptions {
                  "--progress", "json"]
         if !language.isEmpty { args += ["-l", language] }
         args.append(showFps ? "--show-fps" : "--no-show-fps")
-        if keepExtracted { args.append("--keep-extracted") }
+        // Explicit in both directions: nxnative keeps the extracted files by default.
+        args.append(keepExtracted ? "--keep-extracted" : "--no-keep-extracted")
         let name = appName.trimmingCharacters(in: .whitespaces)
         if !name.isEmpty { args += ["--app-name", name] }
         return args
@@ -43,8 +44,12 @@ final class BuildManager: ObservableObject {
     @Published private(set) var createdArtifactPath: String?
     @Published private(set) var builtPlatform: TargetPlatform = .macApp
     @Published private(set) var errorMessage: String?
+    @Published private(set) var wasCancelled = false
+    /// `<title ID>_build/logs` of the last build (full tool output), shown after a failure.
+    @Published private(set) var buildLogsPath: String?
 
     private var runner: StreamingProcess?
+    private var failureTracker = BuildFailureTracker()
 
     /// `out` of the current build's `game` event (cleared when a build starts).
     private var announcedOutput: String?
@@ -65,6 +70,9 @@ final class BuildManager: ObservableObject {
         createdArtifactPath = nil
         errorMessage = nil
         announcedOutput = nil
+        wasCancelled = false
+        buildLogsPath = nil
+        failureTracker = BuildFailureTracker()
     }
 
     func cancel() {
@@ -93,8 +101,16 @@ final class BuildManager: ObservableObject {
             fail(tr("nxnative-Skript nicht gefunden unter:\n\(scriptPath)", "nxnative script not found at:\n\(scriptPath)"))
             return
         }
-        guard options.prodKeysPath.isEmpty || fm.fileExists(atPath: options.prodKeysPath) else {
+        // Without prod.keys (Switch 2 NUPs and dumps need none) there is nothing to validate.
+        switch options.prodKeysPath.isEmpty ? .valid : ProdKeysFile.validate(path: options.prodKeysPath) {
+        case .valid:
+            break
+        case .missing:
             fail(tr("prod.keys nicht gefunden unter:\n\(options.prodKeysPath)", "prod.keys not found at:\n\(options.prodKeysPath)"))
+            return
+        case .unreadable, .incomplete:
+            fail(tr("Die gewählte prod.keys enthält nicht die nötigen Schlüssel:\n\(options.prodKeysPath)",
+                    "The selected prod.keys does not contain the required keys:\n\(options.prodKeysPath)"))
             return
         }
 
@@ -108,12 +124,17 @@ final class BuildManager: ObservableObject {
 
         let runner = StreamingProcess(executable: pythonPath, arguments: arguments)
         runner.onStdoutLine = { [weak self] line in self?.handleOutputLine(line) }
-        runner.onStderrLine = { [weak self] line in self?.appendLog("[Error] \(line)") }
+        runner.onStderrLine = { [weak self] line in
+            self?.failureTracker.noteStderr(line)
+            self?.appendLog("[stderr] \(line)")
+        }
         runner.onExit = { [weak self] status in
             self?.handleProcessFinished(exitCode: status, options: options)
             onFinished()
         }
         self.runner = runner
+
+        Notifier.requestAuthorizationIfNeeded()
 
         do {
             try runner.start()
@@ -169,6 +190,7 @@ final class BuildManager: ObservableObject {
             appendLog("\(ok ? "✓" : "✗") [\(currentStageIndex)/\(totalStages)] \(trans.title) \(tr("fertig", "done")) (\(BuildEvent.formatElapsed(elapsed))) \(summary)")
 
         case let .say(message):
+            failureTracker.noteSay(message)
             appendLog(message)
 
         case let .game(info):
@@ -185,13 +207,23 @@ final class BuildManager: ObservableObject {
         isFinished = true
         runner = nil
         buildSucceeded = (exitCode == 0)
+        let gameName = URL(fileURLWithPath: options.gameDirectory).lastPathComponent
 
         if buildSucceeded {
             appendLog("\n" + tr("✓ Build erfolgreich beendet.", "✓ Build finished successfully."))
             findOutputArtifact(gameDir: Self.outputFolder(of: options.gameDirectory), platform: options.platform)
+            Notifier.post(title: tr("Build fertig", "Build Finished"),
+                          body: tr("„\(gameName)“ wurde erfolgreich gebaut.", "“\(gameName)” was built successfully."))
+        } else if BuildFailureTracker.wasInterrupted(exitCode) {
+            wasCancelled = true
+            appendLog("\n" + tr("⏹ Build abgebrochen.", "⏹ Build cancelled."))
+            errorMessage = failureTracker.describe(exitCode: exitCode)
         } else {
             appendLog("\n" + tr("✗ Build mit Fehler beendet (Exit-Code \(exitCode)).", "✗ Build failed (exit code \(exitCode))."))
-            errorMessage = tr("Build fehlgeschlagen. Details stehen im Protokoll.", "Build failed. See the log for details.")
+            errorMessage = failureTracker.describe(exitCode: exitCode)
+            buildLogsPath = BuildWorkFolder.logsFolder(in: options.gameDirectory)
+            Notifier.post(title: tr("Build fehlgeschlagen", "Build Failed"),
+                          body: "\(gameName): \(errorMessage ?? "")")
         }
     }
 
@@ -218,15 +250,14 @@ final class BuildManager: ObservableObject {
         }
         guard let files = try? FileManager.default.contentsOfDirectory(at: URL(fileURLWithPath: gameDir),
                                                                        includingPropertiesForKeys: nil) else { return }
-        let wanted: String
         switch platform {
-        case .macApp: wanted = "app"
-        case .ios: wanted = "ipa"
-        case .macDev: return
-        }
-        if let artifact = files.first(where: { $0.pathExtension == wanted }) {
-            createdArtifactPath = artifact.path
-            appendLog("\(tr("Erstellt", "Created")): \(artifact.lastPathComponent)")
+        case .macApp:
+            if let artifact = files.first(where: { $0.pathExtension == "app" }) {
+                createdArtifactPath = artifact.path
+                appendLog("\(tr("Erstellt", "Created")): \(artifact.lastPathComponent)")
+            }
+        case .macDev:
+            return
         }
     }
 

@@ -14,28 +14,38 @@ final class AppRouter: ObservableObject {
     @Published var showingLiveLog = false
     @Published var showingImportSheet = false
     @Published var showingSetup = false
+    @Published var statusTargetGame: InstalledGame? = nil
 }
 
 // MARK: - Game actions (used by views and menu commands)
 
 enum GameActions {
     static func launch(_ game: InstalledGame) {
-        launch(appPath: game.path)
+        launch(appPath: game.path, titleId: game.titleId)
     }
 
-    /// `skipSettingsWindow` starts the game with `DM_LAUNCHER=0`, for when the Hub already
-    /// showed its settings. The saved choices apply either way.
-    static func launch(appPath: String, skipSettingsWindow: Bool = false) {
-        let url = URL(fileURLWithPath: appPath)
-        guard skipSettingsWindow else {
-            NSWorkspace.shared.open(url)
-            return
+    static func launch(appPath: String, titleId: String? = nil) {
+        let tid = titleId ?? GameBundleInfo(appPath: appPath)?.titleId
+        var skipLauncher = AppPreferences.shared.skipGameLauncher
+        if let tid = tid {
+            let envValues = EnvFile.load(path: NXPaths.envFilePath(titleId: tid))?.values
+            if let val = envValues?["DM_LAUNCHER"] {
+                skipLauncher = (val == "0")
+            }
         }
+
+        let url = URL(fileURLWithPath: appPath)
         let config = NSWorkspace.OpenConfiguration()
-        config.environment = ["DM_LAUNCHER": "0"]
-        NSWorkspace.shared.openApplication(at: url, configuration: config) { _, error in
-            if error != nil {
-                DispatchQueue.main.async { NSWorkspace.shared.open(url) }
+        if skipLauncher {
+            config.arguments = ["--no-launcher"]
+            config.environment = ["DM_LAUNCHER": "0"]
+        }
+        // An approved save is brought up to date first, so the game starts from the newest state.
+        SaveSyncManager.shared.syncApproved(titleId: tid) {
+            NSWorkspace.shared.openApplication(at: url, configuration: config) { _, error in
+                if error != nil {
+                    NSWorkspace.shared.open(url)
+                }
             }
         }
     }

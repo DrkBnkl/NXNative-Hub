@@ -65,15 +65,22 @@ struct LogConsoleView: View {
 
 struct BadgeView: View {
     let text: String
+    var systemImage: String? = nil
     let color: Color
 
     var body: some View {
-        Text(text)
-            .font(.caption2.weight(.semibold))
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .foregroundStyle(color)
-            .background(color.opacity(0.15), in: Capsule())
+        HStack(spacing: 3) {
+            if let systemImage = systemImage {
+                Image(systemName: systemImage)
+                    .font(.caption2)
+            }
+            Text(text)
+                .font(.caption2.weight(.semibold))
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
+        .foregroundStyle(color)
+        .background(color.opacity(0.15), in: Capsule())
     }
 }
 

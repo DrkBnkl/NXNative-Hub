@@ -29,7 +29,6 @@ enum SidebarItem: String, CaseIterable, Identifiable, Hashable {
 
 enum TargetPlatform: String, CaseIterable, Identifiable {
     case macApp = "mac-app"
-    case ios = "ios"
     case macDev = "mac"
 
     var id: String { rawValue }
@@ -37,7 +36,6 @@ enum TargetPlatform: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .macApp: return tr("Mac-App", "Mac App")
-        case .ios: return tr("iPhone / iPad", "iPhone / iPad")
         case .macDev: return tr("Entwicklertest", "Developer Test")
         }
     }
@@ -45,7 +43,6 @@ enum TargetPlatform: String, CaseIterable, Identifiable {
     var subtitle: String {
         switch self {
         case .macApp: return tr("Eigenständige macOS-App (.app) – per Doppelklick spielbar.", "Standalone macOS app (.app) – double-click to play.")
-        case .ios: return tr("Unsignierte IPA-Datei für Sideloading (TrollStore / AltStore).", "Unsigned IPA file for sideloading (TrollStore / AltStore).")
         case .macDev: return tr("Direkter Start im Terminal zum Testen.", "Runs directly in Terminal for debugging.")
         }
     }
@@ -53,7 +50,6 @@ enum TargetPlatform: String, CaseIterable, Identifiable {
     var systemImage: String {
         switch self {
         case .macApp: return "macwindow"
-        case .ios: return "iphone"
         case .macDev: return "terminal"
         }
     }
@@ -99,43 +95,67 @@ struct InstalledGame: Identifiable, Hashable {
     let version: String
     let path: String
     let sizeFormatted: String
-    /// nil if the game offers no such setting.
-    var fpsTarget: String?
-    var isDocked: Bool?
+    var fpsTarget: String
+    var isDocked: Bool
     var upscaling: String
     var isFullscreen: Bool
     var language: String
+    /// Built with a current nxnative that ships launcher.json (settings list, saved choices).
+    var hasSettingsList: Bool
+    /// The nxnative git commit hash stamped into Info.plist (DMCommit), if recorded.
+    var buildCommit: String?
+    /// The shader chain version the game carries (Contents/Resources/msl/b-<chain> or DMChain).
+    var shaderChain: String?
+    /// Modification date of the game bundle.
+    var mtime: Date
+    /// Indicator whether an nxnative update exists and whether recompiling is recommended.
+    var updateStatus: GameUpdateStatus
+
+    var logPath: String { NXPaths.gameLogPath(titleId: titleId) }
+    var previousLogPath: String { NXPaths.previousGameLogPath(titleId: titleId) }
 
     var icon: NSImage {
         NSWorkspace.shared.icon(forFile: path)
     }
 }
 
-/// Reads title ID, name, version and bundle ID from a converted game's Info.plist.
+/// Reads title ID, name, version, commit and shader chain from a converted game's Info.plist and bundle.
 struct GameBundleInfo {
-    let appPath: String
     let titleId: String
     let name: String
     let version: String
-    /// CFBundleIdentifier: the preferences domain of the game's saved choices.
-    let bundleId: String?
-
-    /// The bundle's own env.txt (`Contents/Resources/dm/env.txt`).
-    var bundleEnvFilePath: String {
-        URL(fileURLWithPath: appPath).appendingPathComponent("Contents/Resources/dm/env.txt").path
-    }
+    /// Preferences domain of the game's own launcher (saved choices), e.g. `org.nxnative.0100…`.
+    let bundleId: String
+    let commit: String?
+    let chain: String?
+    let mtime: Date
 
     init?(appPath: String) {
-        let plistURL = URL(fileURLWithPath: appPath).appendingPathComponent("Contents/Info.plist")
+        let appURL = URL(fileURLWithPath: appPath)
+        let plistURL = appURL.appendingPathComponent("Contents/Info.plist")
         guard let data = try? Data(contentsOf: plistURL),
               let plist = (try? PropertyListSerialization.propertyList(from: data, format: nil)) as? [String: Any],
               let tid = plist["DMTitleID"] as? String, !tid.isEmpty else { return nil }
         self.titleId = tid
-        self.name = (plist["CFBundleName"] as? String) ?? URL(fileURLWithPath: appPath).deletingPathExtension().lastPathComponent
+        self.name = (plist["CFBundleName"] as? String) ?? appURL.deletingPathExtension().lastPathComponent
         self.version = (plist["CFBundleShortVersionString"] as? String) ?? "1.0"
-        self.appPath = appPath
-        let bid = plist["CFBundleIdentifier"] as? String
-        self.bundleId = (bid?.isEmpty == false) ? bid : nil
+        self.bundleId = (plist["CFBundleIdentifier"] as? String) ?? "org.nxnative.\(tid.lowercased())"
+        self.commit = plist["DMCommit"] as? String
+
+        var foundChain = plist["DMChain"] as? String
+        if foundChain == nil {
+            let mslDir = appURL.appendingPathComponent("Contents/Resources/msl")
+            if let items = try? FileManager.default.contentsOfDirectory(atPath: mslDir.path) {
+                for item in items where item.hasPrefix("b-") {
+                    foundChain = String(item.dropFirst(2))
+                    break
+                }
+            }
+        }
+        self.chain = foundChain
+
+        let attrs = try? FileManager.default.attributesOfItem(atPath: appPath)
+        self.mtime = (attrs?[.modificationDate] as? Date) ?? Date()
     }
 }
 
@@ -179,6 +199,7 @@ struct DetectedGameFile: Identifiable {
     let id = UUID()
     let name: String
     let path: String
+    let sizeBytes: Int64
     let sizeFormatted: String
     let kind: Kind
 
@@ -188,6 +209,7 @@ struct DetectedGameFile: Identifiable {
         self.name = name
         self.path = path
         self.sizeFormatted = sizeBytes.map { ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) } ?? "…"
+        self.sizeBytes = sizeBytes ?? 0
         self.kind = kind
     }
 
@@ -196,6 +218,7 @@ struct DetectedGameFile: Identifiable {
         self.path = url.path
 
         let size = Int64((try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0)
+        self.sizeBytes = size
         self.sizeFormatted = ByteCountFormatter.string(fromByteCount: size, countStyle: .file)
 
         // Heuristic based on the common file name pattern "Name [TitleID][vXXXX].nsp"

@@ -11,6 +11,8 @@ final class AppPreferences: ObservableObject {
     private enum Keys {
         static let prodKeys = "savedProdKeysPath"
         static let gameLanguage = "defaultGameLanguage"
+        static let notifyBuilds = Notifier.enabledKey
+        static let skipGameLauncher = "skipGameLauncher"
     }
 
     @Published var prodKeysPath: String {
@@ -29,8 +31,20 @@ final class AppPreferences: ObservableObject {
         didSet { UserDefaults.standard.set(customRepoPath, forKey: NXPaths.customRepoPathKey) }
     }
 
+    /// Post a notification when a build or batch import finishes while the app is in the background.
+    @Published var notifyWhenBuildsFinish: Bool {
+        didSet { UserDefaults.standard.set(notifyWhenBuildsFinish, forKey: Keys.notifyBuilds) }
+    }
+
+    /// Whether to skip the game's start / settings window when launching.
+    @Published var skipGameLauncher: Bool {
+        didSet { UserDefaults.standard.set(skipGameLauncher, forKey: Keys.skipGameLauncher) }
+    }
+
     init() {
         let defaults = UserDefaults.standard
+        notifyWhenBuildsFinish = defaults.object(forKey: Keys.notifyBuilds) as? Bool ?? true
+        skipGameLauncher = defaults.object(forKey: Keys.skipGameLauncher) as? Bool ?? true
         prodKeysPath = defaults.string(forKey: Keys.prodKeys) ?? ""
         customRepoPath = defaults.string(forKey: NXPaths.customRepoPathKey) ?? ""
         let savedLanguage = defaults.string(forKey: Keys.gameLanguage)

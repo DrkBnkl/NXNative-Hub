@@ -2,6 +2,28 @@ import Foundation
 
 // MARK: - Form state of the builder page
 
+/// Free space check before a build. nxnative: a first build needs about twice the game's
+/// size plus 10 GB; a rebuild that reuses the `<title ID>_build` folder needs much less.
+struct DiskSpaceEstimate: Equatable {
+    let required: Int64
+    let available: Int64
+
+    var isSufficient: Bool { available >= required }
+
+    static let overhead: Int64 = 10 * 1_000_000_000
+
+    static func make(gameBytes: Int64, folder: String) -> DiskSpaceEstimate? {
+        guard gameBytes > 0,
+              let values = try? URL(fileURLWithPath: folder).resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]),
+              let available = values.volumeAvailableCapacityForImportantUsage else { return nil }
+        return DiskSpaceEstimate(required: gameBytes * 2 + overhead, available: available)
+    }
+
+    static func format(_ bytes: Int64) -> String {
+        ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+    }
+}
+
 final class BuilderFormModel: ObservableObject {
     @Published var gameDirectory: String = "" {
         didSet { if gameDirectory != oldValue { scanGameFolder() } }
@@ -9,7 +31,8 @@ final class BuilderFormModel: ObservableObject {
     @Published var platform: TargetPlatform = .macApp
     @Published var language: String = AppPreferences.shared.defaultGameLanguage
     @Published var showFps = false
-    @Published var keepExtracted = false
+    /// nxnative's own default: the next build of the same game reuses the extracted files.
+    @Published var keepExtracted = true
     @Published var appName = ""
     @Published private(set) var detectedFiles: [DetectedGameFile] = []
     /// How the build script will read the folder (NSPs, a NUP or a dump folder).
@@ -25,11 +48,16 @@ final class BuilderFormModel: ObservableObject {
 
     var needsProdKeys: Bool { source.needsProdKeys }
     var isSwitch2: Bool { source.isSwitch2Source }
+    /// The folder already holds a `<title ID>_build` work folder: the build will be much faster.
+    @Published private(set) var hasPreviousBuild = false
+    @Published private(set) var diskSpace: DiskSpaceEstimate?
 
     func clear() {
         gameDirectory = ""
         detectedFiles.removeAll()
         resetSwitch2Info()
+        hasPreviousBuild = false
+        diskSpace = nil
     }
 
     private func resetSwitch2Info() {
@@ -59,6 +87,8 @@ final class BuilderFormModel: ObservableObject {
         resetSwitch2Info()
         guard !gameDirectory.isEmpty else {
             detectedFiles = []
+            hasPreviousBuild = false
+            diskSpace = nil
             return
         }
         let folder = URL(fileURLWithPath: gameDirectory)
@@ -94,13 +124,23 @@ final class BuilderFormModel: ObservableObject {
                 .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
                 .map(DetectedGameFile.init(url:))
         }
+        updateBuildEstimates()
+    }
+
+    /// The folder the build works in: the game folder, or the folder of a .nup file given in its place.
+    private var workFolder: String {
+        if case .nup(let nup) = source, nup.path == gameDirectory { return nup.deletingLastPathComponent().path }
+        return gameDirectory
+    }
+
+    private func updateBuildEstimates() {
+        hasPreviousBuild = !BuildWorkFolder.find(in: workFolder).isEmpty
+        diskSpace = DiskSpaceEstimate.make(gameBytes: detectedFiles.reduce(0) { $0 + $1.sizeBytes }, folder: workFolder)
     }
 
     private func applySwitch2Contents(_ contents: GameSourceContents?) {
         switch2TitleId = contents?.titleId.flatMap { SwitchTitleID.baseID(of: $0) }
         switch2Profile = switch2TitleId.flatMap { ProfileDatabase.shared.profile(for: $0) }
-        // nxnative builds Switch 2 games for the Mac; iPhone and iPad are untested.
-        if platform == .ios { platform = .macApp }
     }
 
     private typealias DumpPart = (name: String, url: URL, kind: DetectedGameFile.Kind, measured: [URL])
@@ -138,6 +178,7 @@ final class BuilderFormModel: ObservableObject {
             DispatchQueue.main.async {
                 guard let self, self.gameDirectory == directory, self.source == .dump else { return }
                 self.detectedFiles = measured
+                self.updateBuildEstimates()
             }
         }
     }
@@ -163,9 +204,10 @@ final class BuilderFormModel: ObservableObject {
     /// Starts the build (used by the toolbar button and the ⌘R menu command).
     func startBuild(manager: BuildManager, monitor: ActiveBuildMonitor, prefs: AppPreferences, library: GameLibraryManager) {
         guard canStart(manager: manager, monitor: monitor, prefs: prefs) else { return }
-        manager.startBuild(options: makeOptions(prefs: prefs)) {
+        manager.startBuild(options: makeOptions(prefs: prefs)) { [weak self] in
             library.refreshLibrary()
             monitor.checkActiveBuild()
+            self?.scanGameFolder()   // picks up the new work folder and the free space
         }
         monitor.checkActiveBuild()
     }

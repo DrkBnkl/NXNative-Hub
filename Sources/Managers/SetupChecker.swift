@@ -2,10 +2,9 @@ import Foundation
 
 // MARK: - Setup check (prerequisites for building games)
 //
-// Verifies everything the app depends on but does not ship itself, as nxnative's README and
-// check_prereqs (scripts/build_ipa_from_nsp.py) require: macOS, Xcode 27.2 with its Metal
-// toolchain, the Homebrew tools, git, the nxnative repo with its venv (Python 3.12+) and
-// Python packages, and prod.keys.
+// Verifies everything nxnative's build script needs (its README, "Install the tools"):
+// macOS and Xcode versions, the Metal toolchain, Homebrew tools, the nxnative repo with
+// its venv and Python packages, and prod.keys.
 // Checks run on a background queue; some issues can be fixed with one click.
 
 struct SetupCheck: Identifiable, Equatable {
@@ -19,9 +18,10 @@ struct SetupCheck: Identifiable, Equatable {
         case chooseRepoFolder
         case createVenv
         case installPythonPackages
-        case installMetalToolchain
-        case installHomebrewTools
+        case installCommandLineTools
         case chooseProdKeys
+        case installBrewTools
+        case downloadMetalToolchain
     }
 
     let id: String
@@ -67,9 +67,10 @@ final class SetupChecker: ObservableObject {
         if let completion = completion { pendingCompletions.append(completion) }
         guard !isChecking else { return }
         isChecking = true
+        let keysPath = AppPreferences.shared.prodKeysPath
 
         queue.async { [weak self] in
-            let results = Self.evaluate(prodKeysExists: prodKeysExists)
+            let results = Self.evaluate(prodKeysPath: keysPath)
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 self.checks = results
@@ -82,23 +83,24 @@ final class SetupChecker: ObservableObject {
         }
     }
 
-    private static func evaluate(prodKeysExists: Bool) -> [SetupCheck] {
+    private static func evaluate(prodKeysPath: String) -> [SetupCheck] {
         let fm = FileManager.default
         var results: [SetupCheck] = []
 
         results.append(macOSCheck())
         let xcode = xcodeChecks()
         results.append(contentsOf: xcode.checks)
-        results.append(homebrewToolsCheck())
 
         // git
         let git = CommandRunner.tool("git", ["--version"])
         results.append(SetupCheck(
             id: "git",
             title: "git",
-            detail: git.succeeded ? git.trimmedOutput : tr("Nicht gefunden – wird mit den Command Line Tools installiert", "Not found – installed with the Command Line Tools"),
+            detail: git.succeeded ? git.trimmedOutput : tr("Nicht gefunden – wird mit Xcode installiert", "Not found – installed with Xcode"),
             status: git.succeeded ? .ok : .missing,
             fix: nil))
+
+        results.append(brewToolsCheck())
 
         // nxnative folder
         let repo = NXPaths.repoPath
@@ -122,7 +124,7 @@ final class SetupChecker: ObservableObject {
             let pending = tr("Erst den nxnative-Ordner einrichten", "Set up the nxnative folder first")
             results.append(SetupCheck(id: "script", title: tr("Build-Skript", "Build Script"), detail: pending, status: .missing, fix: nil))
             results.append(SetupCheck(id: "venv", title: tr("Python-Umgebung (venv)", "Python Environment (venv)"), detail: pending, status: .missing, fix: nil))
-            results.append(prodKeysCheck(exists: prodKeysExists))
+            results.append(prodKeysCheck(path: prodKeysPath))
             return results
         }
 
@@ -159,22 +161,22 @@ final class SetupChecker: ObservableObject {
             status: profileCount > 0 ? .ok : .warning,
             fix: nil))
 
-        // venv
+        // venv (Python 3.12 or newer)
         let pythonExists = fm.isExecutableFile(atPath: NXPaths.pythonPath)
-        let venvPython = pythonExists ? pythonInfo(at: NXPaths.pythonPath) : nil
-        let venvUsable = venvPython?.isSupported ?? false
-        let minimum = "\(NXPaths.minimumPythonVersion.major).\(NXPaths.minimumPythonVersion.minor)"
+        let venvVersion = pythonExists ? pythonVersion(at: NXPaths.pythonPath) : nil
+        let versionOK = venvVersion.map(isSupportedPython) ?? false
+        let minimum = "\(NXPaths.minimumPython.major).\(NXPaths.minimumPython.minor)"
         results.append(SetupCheck(
             id: "venv",
             title: tr("Python-Umgebung (venv)", "Python Environment (venv)"),
             detail: !pythonExists
                 ? tr("Fehlt: \(NXPaths.venvPath)", "Missing: \(NXPaths.venvPath)")
-                : venvUsable
-                    ? "Python \(venvPython!.version) – venv/"
-                    : tr("Python \(venvPython?.description ?? "?") – nxnative braucht Python \(minimum) oder neuer (arm64). venv neu erstellen.",
-                         "Python \(venvPython?.description ?? "?") – nxnative needs Python \(minimum) or newer (arm64). Recreate the venv."),
-            status: venvUsable ? .ok : .missing,
-            fix: venvUsable ? nil : .createVenv))
+                : versionOK
+                    ? "Python \(venvVersion ?? "?") – venv/"
+                    : tr("Python \(venvVersion ?? "?") ist zu alt – nxnative braucht \(minimum) oder neuer. venv/ in den Papierkorb legen und neu erstellen.",
+                         "Python \(venvVersion ?? "?") is too old – nxnative needs \(minimum) or newer. Move venv/ to the Trash and create it again."),
+            status: pythonExists && versionOK ? .ok : .missing,
+            fix: pythonExists ? nil : .createVenv))
 
         // Python packages
         if pythonExists {
@@ -183,102 +185,98 @@ final class SetupChecker: ObservableObject {
                 id: "packages",
                 title: tr("Python-Pakete", "Python Packages"),
                 detail: missing.isEmpty
-                    ? NXPaths.requiredPythonModules.map(\.name).joined(separator: ", ")
-                    : tr("Fehlt: \(missing.joined(separator: ", "))", "Missing: \(missing.joined(separator: ", "))"),
+                    ? NXPaths.requiredPythonModules.map { $0.displayName }.joined(separator: ", ")
+                    : tr("Fehlt: \(missing.map { $0.displayName }.joined(separator: ", "))", "Missing: \(missing.map { $0.displayName }.joined(separator: ", "))"),
                 status: missing.isEmpty ? .ok : .missing,
                 fix: missing.isEmpty ? nil : .installPythonPackages))
         }
 
         if let metal = metalLockCheck(actual: xcode.metalVersion) { results.append(metal) }
-        results.append(prodKeysCheck(exists: prodKeysExists))
+        results.append(prodKeysCheck(path: prodKeysPath))
         return results
     }
 
-    private static func prodKeysCheck(exists: Bool) -> SetupCheck {
-        SetupCheck(
-            id: "keys",
-            title: "prod.keys",
-            detail: exists
-                ? tr("Vorhanden", "Available")
-                : tr("Nicht gefunden – die Schlüssel deiner eigenen Switch werden zum Entschlüsseln von NSP/XCI benötigt (Switch-2-Spiele als .nup oder Dump brauchen keine).",
-                     "Not found – the keys from your own Switch are required to decrypt NSP/XCI (Switch 2 games as .nup or dump need none)."),
-            // Only a warning: Switch 2 games build without keys; NSP/XCI builds still check for them.
-            status: exists ? .ok : .warning,
-            fix: exists ? nil : .chooseProdKeys)
-    }
+    // MARK: Individual checks
 
     private static func macOSCheck() -> SetupCheck {
-        let v = ProcessInfo.processInfo.operatingSystemVersion
-        let ok = (v.majorVersion, v.minorVersion) >= (26, 6)
-        let current = "macOS \(v.majorVersion).\(v.minorVersion)"
+        let version = ProcessInfo.processInfo.operatingSystemVersion
+        let current = "\(version.majorVersion).\(version.minorVersion)"
+        let minimum = NXPaths.minimumMacOS
+        let ok = ProcessInfo.processInfo.isOperatingSystemAtLeast(minimum)
         return SetupCheck(
             id: "macos",
             title: "macOS",
-            detail: ok ? current
-                : tr("\(current) – nxnative braucht macOS 26.6 oder neuer, um Spiele zu bauen.",
-                     "\(current) – nxnative needs macOS 26.6 or later to build games."),
+            detail: ok
+                ? "macOS \(current)"
+                : tr("macOS \(current) – nxnative verlangt macOS \(minimum.majorVersion).\(minimum.minorVersion) oder neuer.",
+                     "macOS \(current) – nxnative requires macOS \(minimum.majorVersion).\(minimum.minorVersion) or later."),
             status: ok ? .ok : .missing,
             fix: nil)
     }
 
-    /// Full Xcode (not only the Command Line Tools) and its Metal compiler.
+    /// Xcode (not only the Command Line Tools) and its Metal toolchain.
     /// `metalVersion` is the first line of `metal --version`, nil if the compiler does not run.
     private static func xcodeChecks() -> (checks: [SetupCheck], metalVersion: String?) {
-        let selectCommand = "sudo xcode-select -s /Applications/Xcode.app"
-        let path = CommandRunner.run("/usr/bin/xcode-select", ["-p"]).trimmedOutput
-        let version = CommandRunner.run("/usr/bin/xcodebuild", ["-version"])
-        let versionLine = version.trimmedOutput.split(separator: "\n").first.map(String.init) ?? ""
-        let isFullXcode = version.succeeded && versionLine.hasPrefix("Xcode ") && !path.contains("CommandLineTools")
-
-        let xcode: SetupCheck
-        if !isFullXcode {
-            xcode = SetupCheck(
+        let select = CommandRunner.run("/usr/bin/xcode-select", ["-p"])
+        guard select.succeeded else {
+            return ([SetupCheck(
                 id: "xcode",
                 title: "Xcode",
-                detail: tr("Kein vollständiges Xcode ausgewählt (\(path.isEmpty ? "nichts" : path)). Installiere Xcode 27.2 und wähle es im Terminal aus: \(selectCommand)",
-                           "No full Xcode selected (\(path.isEmpty ? "none" : path)). Install Xcode 27.2 and select it in Terminal: \(selectCommand)"),
+                detail: tr("Nicht installiert. nxnative braucht Xcode \(NXPaths.testedXcodeVersion) aus dem App Store.",
+                           "Not installed. nxnative needs Xcode \(NXPaths.testedXcodeVersion) from the App Store."),
                 status: .missing,
-                fix: nil)
-        } else {
-            let number = versionLine.dropFirst("Xcode ".count)
-            let parts = number.split(separator: ".").compactMap { Int($0) }
-            let tested = parts.count >= 2 && parts[0] == 27 && parts[1] == 2
-            xcode = SetupCheck(
+                fix: .installCommandLineTools)], nil)
+        }
+
+        let developerDir = select.trimmedOutput
+        if developerDir.contains("CommandLineTools") {
+            return ([SetupCheck(
                 id: "xcode",
                 title: "Xcode",
-                detail: tested
-                    ? "\(versionLine) – \(path)"
-                    : tr("\(versionLine) ausgewählt – nxnative ist mit Xcode 27.2 getestet. Bei mehreren Versionen: \(selectCommand)",
-                         "\(versionLine) selected – nxnative is tested with Xcode 27.2. With several versions: \(selectCommand)"),
-                status: tested ? .ok : .warning,
-                fix: nil)
+                detail: tr("Nur die Command Line Tools sind aktiv (\(developerDir)). nxnative braucht das vollständige Xcode \(NXPaths.testedXcodeVersion); nach der Installation „sudo xcode-select -s /Applications/Xcode.app“ ausführen.",
+                           "Only the Command Line Tools are active (\(developerDir)). nxnative needs the full Xcode \(NXPaths.testedXcodeVersion); after installing it, run “sudo xcode-select -s /Applications/Xcode.app”."),
+                status: .missing,
+                fix: nil)], nil)
         }
-        guard isFullXcode else { return ([xcode], nil) }
 
-        // Xcode 26 and later install the Metal toolchain separately.
+        var results: [SetupCheck] = []
+        let versionLine = CommandRunner.run("/usr/bin/xcodebuild", ["-version"]).trimmedOutput
+            .split(separator: "\n").first.map(String.init) ?? "Xcode"
+        let version = versionLine.replacingOccurrences(of: "Xcode", with: "").trimmingCharacters(in: .whitespaces)
+        let tested = version.compare(NXPaths.testedXcodeVersion, options: .numeric) != .orderedAscending
+        results.append(SetupCheck(
+            id: "xcode",
+            title: "Xcode",
+            detail: tested
+                ? versionLine
+                : tr("\(versionLine) – nxnative ist mit Xcode \(NXPaths.testedXcodeVersion) getestet; ältere Versionen können Shader anders übersetzen.",
+                     "\(versionLine) – nxnative is tested with Xcode \(NXPaths.testedXcodeVersion); older versions may compile shaders differently."),
+            status: tested ? .ok : .warning,
+            fix: nil))
+
+        // Since Xcode 26 the Metal compiler is a separate download.
         let metal = CommandRunner.run("/usr/bin/xcrun", ["-sdk", "macosx", "metal", "--version"])
-        let metalCheck = SetupCheck(
+        results.append(SetupCheck(
             id: "metal",
             title: tr("Metal-Toolchain", "Metal Toolchain"),
             detail: metal.succeeded
-                ? (metal.trimmedOutput.split(separator: "\n").first.map(String.init) ?? "metal")
-                : tr("Der Metal-Compiler läuft nicht – Installation mit „xcodebuild -downloadComponent MetalToolchain“.",
-                     "The Metal compiler does not run – install it with “xcodebuild -downloadComponent MetalToolchain”."),
+                ? (metal.trimmedOutput.split(separator: "\n").first.map(String.init) ?? tr("Installiert", "Installed"))
+                : tr("Der Metal-Compiler fehlt – er wird seit Xcode 26 separat geladen.", "The Metal compiler is missing – since Xcode 26 it is downloaded separately."),
             status: metal.succeeded ? .ok : .missing,
-            fix: metal.succeeded ? nil : .installMetalToolchain)
+            fix: metal.succeeded ? nil : .downloadMetalToolchain))
         let metalVersion = metal.succeeded ? metal.trimmedOutput.split(separator: "\n").first.map(String.init) : nil
-        return ([xcode, metalCheck], metalVersion)
+        return (results, metalVersion)
     }
 
     /// The shaders of NVN games are built only with the Metal compiler recorded in the repo's
     /// dmsh_chain.lock; another one stops those builds (unless --allow-other-metal).
     private static func metalLockCheck(actual: String?) -> SetupCheck? {
-        guard let lock = try? String(contentsOfFile: NXPaths.shaderChainLockPath, encoding: .utf8) else { return nil }
+        guard let actual, let lock = try? String(contentsOfFile: NXPaths.shaderChainLockPath, encoding: .utf8) else { return nil }
         let expected = lock.split(separator: "\n").compactMap { line -> String? in
             let cols = line.split(separator: "\t", maxSplits: 1).map(String.init)
             return cols.count == 2 && cols[0] == "metal_macosx" ? cols[1].trimmingCharacters(in: .whitespaces) : nil
         }.first
-        guard let expected, let actual else { return nil }
+        guard let expected else { return nil }
         let matches = actual.trimmingCharacters(in: .whitespaces) == expected
         return SetupCheck(
             id: "metallock",
@@ -291,101 +289,95 @@ final class SetupChecker: ObservableObject {
             fix: nil)
     }
 
-    /// Homebrew tools check_prereqs looks for (xcodegen only for IPA builds).
-    static let homebrewTools: [(command: String, formula: String, required: Bool)] = [
-        ("zstd", "zstd", true),
-        ("glslangValidator", "glslang", true),
-        ("xcodegen", "xcodegen", false)
-    ]
-
-    static func missingHomebrewTools() -> [(command: String, formula: String, required: Bool)] {
-        homebrewTools.filter { !CommandRunner.tool("which", [$0.command]).succeeded }
-    }
-
-    private static func homebrewToolsCheck() -> SetupCheck {
-        let missing = missingHomebrewTools()
-        let names = homebrewTools.map(\.formula).joined(separator: ", ")
-        let missingNames = missing.map(\.formula).joined(separator: " ")
-        let requiredMissing = missing.contains { $0.required }
+    private static func brewToolsCheck() -> SetupCheck {
+        let missing = NXPaths.requiredBrewTools.filter { NXPaths.findExecutable($0.command) == nil }
+        let brewInstalled = FileManager.default.isExecutableFile(atPath: NXPaths.brewExecutable)
+        let detail: String
+        if missing.isEmpty {
+            detail = NXPaths.requiredBrewTools.map { $0.formula }.joined(separator: ", ")
+        } else if brewInstalled {
+            detail = tr("Fehlt: \(missing.map { $0.formula }.joined(separator: ", "))", "Missing: \(missing.map { $0.formula }.joined(separator: ", "))")
+        } else {
+            detail = tr("Homebrew (brew.sh) ist nicht installiert – es wird für \(missing.map { $0.formula }.joined(separator: ", ")) benötigt.",
+                        "Homebrew (brew.sh) is not installed – it is needed for \(missing.map { $0.formula }.joined(separator: ", ")).")
+        }
         return SetupCheck(
             id: "brew",
-            title: tr("Homebrew-Tools", "Homebrew Tools"),
-            detail: missing.isEmpty
-                ? names
-                : requiredMissing
-                    ? tr("Fehlt: \(missingNames) – brew install \(missingNames)", "Missing: \(missingNames) – brew install \(missingNames)")
-                    : tr("Fehlt: xcodegen – nur für IPA-Builds nötig", "Missing: xcodegen – only needed for IPA builds"),
-            status: missing.isEmpty ? .ok : (requiredMissing ? .missing : .warning),
-            fix: missing.isEmpty ? nil : .installHomebrewTools)
+            title: tr("Homebrew-Werkzeuge", "Homebrew Tools"),
+            detail: detail,
+            status: missing.isEmpty ? .ok : .missing,
+            fix: missing.isEmpty || !brewInstalled ? nil : .installBrewTools)
     }
 
-    struct PythonInfo {
-        let version: String
-        let major: Int
-        let minor: Int
-        let machine: String
-        var isSupported: Bool {
-            (major, minor) >= NXPaths.minimumPythonVersion && machine == "arm64"
+    private static func prodKeysCheck(path: String) -> SetupCheck {
+        let validity = ProdKeysFile.validate(path: path)
+        let detail: String
+        switch validity {
+        case .valid:
+            detail = tr("Vorhanden", "Available")
+        case .missing:
+            detail = tr("Nicht gefunden – die Schlüssel deiner eigenen Switch werden zum Entschlüsseln von NSP/XCI benötigt (Switch-2-Spiele als .nup oder Dump brauchen keine).", "Not found – the keys from your own Switch are required to decrypt NSP/XCI (Switch 2 games as .nup or dump need none).")
+        case .unreadable:
+            detail = tr("Die Datei kann nicht gelesen werden.", "The file cannot be read.")
+        case .incomplete:
+            detail = tr("Die Datei enthält nicht die nötigen Schlüssel (header_key, key_area_key_application_*). Ist es wirklich die prod.keys?",
+                        "The file does not contain the required keys (header_key, key_area_key_application_*). Is it really prod.keys?")
         }
-        var description: String { machine == "arm64" ? version : "\(version) (\(machine))" }
+        return SetupCheck(
+            id: "keys",
+            title: "prod.keys",
+            detail: detail,
+            // No file is only a warning: Switch 2 games (.nup, dump folder) build without keys, and an
+            // NSP/XCI build checks for them itself. A wrong file is an error.
+            status: validity == .valid ? .ok : (validity == .missing ? .warning : .missing),
+            fix: validity == .valid ? nil : .chooseProdKeys)
     }
 
-    /// Version and architecture of an interpreter, or nil.
-    private static func pythonInfo(at executable: String) -> PythonInfo? {
-        let result = CommandRunner.run(executable, ["-c", "import sys, platform; print('%d %d %s' % (sys.version_info[0], sys.version_info[1], platform.machine()))"])
-        return parsePythonInfo(result)
+    /// "3.12" for the given interpreter, or nil.
+    private static func pythonVersion(at executable: String) -> String? {
+        let result = CommandRunner.run(executable, ["-c", "import sys; print('%d.%d' % sys.version_info[:2])"])
+        return result.succeeded ? result.trimmedOutput : nil
     }
 
-    private static func parsePythonInfo(_ result: CommandRunner.Result) -> PythonInfo? {
-        guard result.succeeded else { return nil }
-        let parts = result.trimmedOutput.split(separator: " ").map(String.init)
-        guard parts.count == 3, let major = Int(parts[0]), let minor = Int(parts[1]) else { return nil }
-        return PythonInfo(version: "\(major).\(minor)", major: major, minor: minor, machine: parts[2])
+    private static func isSupportedPython(_ version: String) -> Bool {
+        let parts = version.split(separator: ".").compactMap { Int($0) }
+        guard parts.count >= 2 else { return false }
+        return (parts[0], parts[1]) >= (NXPaths.minimumPython.major, NXPaths.minimumPython.minor)
     }
 
-    /// The newest suitable Python on the PATH (python3.15 … python3.12, then python3).
-    private static func findSuitablePython() -> (name: String, info: PythonInfo)? {
-        let names = (NXPaths.minimumPythonVersion.minor...20).reversed().map { "python3.\($0)" } + ["python3"]
-        for name in names {
-            let result = CommandRunner.tool(name, ["-c", "import sys, platform; print('%d %d %s' % (sys.version_info[0], sys.version_info[1], platform.machine()))"])
-            if let info = parsePythonInfo(result), info.isSupported { return (name, info) }
-        }
-        return nil
-    }
-
-    /// Names of required packages the venv cannot import.
-    private static func missingPythonPackages() -> [String] {
-        let modules = NXPaths.requiredPythonModules.flatMap(\.modules)
-        // find_spec of a dotted name imports its parent, which may not exist either.
+    /// Required packages the venv cannot import (any of a requirement's alternatives counts).
+    private static func missingPythonPackages() -> [NXPaths.PythonRequirement] {
         let script = """
         import importlib.util, sys
-        def ok(m):
-            try: return importlib.util.find_spec(m) is not None
-            except ImportError: return False
-        print(' '.join(m for m in sys.argv[1:] if not ok(m)))
+        def found(name):
+            try:
+                return importlib.util.find_spec(name) is not None
+            except Exception:
+                return False
+        print(' '.join(arg for arg in sys.argv[1:] if not any(found(m) for m in arg.split('|'))))
         """
-        let result = CommandRunner.run(NXPaths.pythonPath, ["-c", script] + modules)
-        guard result.succeeded else { return NXPaths.requiredPythonModules.map(\.name) }
-        let missingModules = Set(result.trimmedOutput.split(separator: " ").map(String.init))
-        return NXPaths.requiredPythonModules
-            .filter { req in req.modules.allSatisfy { missingModules.contains($0) } }
-            .map(\.name)
+        let requirements = NXPaths.requiredPythonModules
+        let arguments = requirements.map { $0.modules.joined(separator: "|") }
+        let result = CommandRunner.run(NXPaths.pythonPath, ["-c", script] + arguments)
+        guard result.succeeded else { return requirements }
+        let missing = Set(result.trimmedOutput.split(separator: " ").map(String.init))
+        return requirements.filter { missing.contains($0.modules.joined(separator: "|")) }
     }
 
     // MARK: One-click fixes
 
-    /// Creates (or recreates) `<repo>/venv` with Python 3.12+ (arm64) from the PATH and installs the packages.
+    /// Creates `<repo>/venv` with a Python ≥ 3.12 from the PATH and installs the packages.
     func createVenv(prodKeysExists: Bool) {
         runFix(prodKeysExists: prodKeysExists) { log in
-            guard let python = Self.findSuitablePython() else {
-                log(tr("✗ Python 3.12 oder neuer (arm64) wurde nicht gefunden. Installiere es z. B. mit „brew install python“.",
-                       "✗ Python 3.12 or newer (arm64) was not found. Install it e.g. with “brew install python”."))
+            let minimum = NXPaths.minimumPython
+            let version = CommandRunner.tool("python3", ["-c", "import sys; print('%d.%d' % sys.version_info[:2]); sys.exit(0 if sys.version_info >= (\(minimum.major), \(minimum.minor)) else 1)"])
+            guard version.succeeded else {
+                log(tr("✗ Python \(minimum.major).\(minimum.minor) oder neuer wird benötigt (gefunden: \(version.trimmedOutput.isEmpty ? "keins" : version.trimmedOutput)). Installiere es z. B. mit „brew install python“.",
+                       "✗ Python \(minimum.major).\(minimum.minor) or newer is required (found: \(version.trimmedOutput.isEmpty ? "none" : version.trimmedOutput)). Install it e.g. with “brew install python”."))
                 return
             }
-            log(tr("Python \(python.info.version) gefunden (\(python.name)) – venv wird erstellt …",
-                   "Found Python \(python.info.version) (\(python.name)) – creating venv…"))
-            // --clear replaces an existing venv built with an older Python.
-            let venv = CommandRunner.tool(python.name, ["-m", "venv", "--clear", NXPaths.venvPath])
+            log(tr("Python \(version.trimmedOutput) gefunden – venv wird erstellt …", "Found Python \(version.trimmedOutput) – creating venv…"))
+            let venv = CommandRunner.tool("python3", ["-m", "venv", NXPaths.venvPath])
             guard venv.succeeded else {
                 log("✗ venv: \(venv.trimmedOutput)")
                 return
@@ -401,36 +393,46 @@ final class SetupChecker: ObservableObject {
         }
     }
 
-    /// Downloads the Metal toolchain (Xcode 26 and later install it separately). Takes a while.
-    func installMetalToolchain(prodKeysExists: Bool) {
+    /// Opens Apple's installer dialog for the Command Line Tools.
+    func installCommandLineTools(prodKeysExists: Bool) {
         runFix(prodKeysExists: prodKeysExists) { log in
-            log(tr("Metal-Toolchain wird geladen (xcodebuild -downloadComponent MetalToolchain) …",
-                   "Downloading the Metal toolchain (xcodebuild -downloadComponent MetalToolchain)…"))
-            let result = CommandRunner.run("/usr/bin/xcodebuild", ["-downloadComponent", "MetalToolchain"])
-            log(result.succeeded ? tr("✓ Metal-Toolchain installiert", "✓ Metal toolchain installed")
-                                 : "✗ xcodebuild: \(result.trimmedOutput)")
+            let result = CommandRunner.run("/usr/bin/xcode-select", ["--install"])
+            log(result.succeeded
+                ? tr("Das Installationsfenster von Apple wurde geöffnet. Nach der Installation bitte erneut prüfen.", "Apple's installer window has been opened. Check again after the installation.")
+                : result.trimmedOutput)
         }
     }
 
-    /// Installs the missing Homebrew tools with `brew install`.
-    func installHomebrewTools(prodKeysExists: Bool) {
+    /// Installs the missing Homebrew formulae (xcodegen, zstd, glslang).
+    func installBrewTools(prodKeysExists: Bool) {
         runFix(prodKeysExists: prodKeysExists) { log in
-            guard CommandRunner.tool("which", ["brew"]).succeeded else {
-                log(tr("✗ Homebrew ist nicht installiert – siehe https://brew.sh", "✗ Homebrew is not installed – see https://brew.sh"))
-                return
-            }
-            let formulas = Self.missingHomebrewTools().map(\.formula)
-            guard !formulas.isEmpty else { return }
-            log("brew install \(formulas.joined(separator: " ")) …")
-            let result = CommandRunner.tool("brew", ["install"] + formulas)
-            log(result.succeeded ? tr("✓ Homebrew-Tools installiert", "✓ Homebrew tools installed")
-                                 : "✗ brew: \(result.trimmedOutput)")
+            let formulae = NXPaths.requiredBrewTools
+                .filter { NXPaths.findExecutable($0.command) == nil }
+                .map { $0.formula }
+            guard !formulae.isEmpty else { return }
+            log(tr("brew install \(formulae.joined(separator: " ")) – das kann einige Minuten dauern …",
+                   "brew install \(formulae.joined(separator: " ")) – this can take a few minutes…"))
+            let result = CommandRunner.run(NXPaths.brewExecutable, ["install"] + formulae)
+            log(result.succeeded ? tr("✓ Homebrew-Werkzeuge installiert", "✓ Homebrew tools installed")
+                                 : "✗ brew: \(result.trimmedOutput.suffix(800))")
+        }
+    }
+
+    /// Downloads Xcode's Metal toolchain (separate component since Xcode 26).
+    func downloadMetalToolchain(prodKeysExists: Bool) {
+        runFix(prodKeysExists: prodKeysExists) { log in
+            log(tr("Metal-Toolchain wird geladen (xcodebuild -downloadComponent MetalToolchain) – das kann einige Minuten dauern …",
+                   "Downloading the Metal toolchain (xcodebuild -downloadComponent MetalToolchain) – this can take a few minutes…"))
+            let result = CommandRunner.run("/usr/bin/xcodebuild", ["-downloadComponent", "MetalToolchain"])
+            log(result.succeeded ? tr("✓ Metal-Toolchain installiert", "✓ Metal toolchain installed")
+                                 : "✗ xcodebuild: \(result.trimmedOutput.suffix(800))")
         }
     }
 
     private static func installPackages(log: (String) -> Void) {
         let packages = NXPaths.requiredPythonModules.map { $0.package }
-        log(tr("Python-Pakete werden installiert: \(packages.joined(separator: ", ")) …", "Installing Python packages: \(packages.joined(separator: ", "))…"))
+        let names = NXPaths.requiredPythonModules.map { $0.displayName }.joined(separator: ", ")
+        log(tr("Python-Pakete werden installiert: \(names) …", "Installing Python packages: \(names)…"))
         let pip = CommandRunner.run(NXPaths.pythonPath, ["-m", "pip", "install", "--upgrade"] + packages)
         log(pip.succeeded ? tr("✓ Python-Pakete installiert", "✓ Python packages installed") : "✗ pip: \(pip.trimmedOutput)")
     }

@@ -146,12 +146,12 @@ final class UpdateManager: ObservableObject {
                 return
             }
 
-            // 4. Upgrade Python packages (nx_extract is a native tool in the repo since nxnative 641636e2; no .NET build)
+            // 4. Upgrade Python packages (nx_extract is a committed native tool since nxnative 641636e2: no .NET build)
             let pip = NXPaths.pipPath
             if FileManager.default.fileExists(atPath: pip) {
-                let packageNames = NXPaths.requiredPythonModules.map(\.name).joined(separator: ", ")
-                self.log(tr("[3/3] Python-Bibliotheken prüfen (\(packageNames)) …",
-                            "[3/3] Checking Python libraries (\(packageNames))…"))
+                let names = NXPaths.requiredPythonModules.map { $0.displayName }.joined(separator: ", ")
+                self.log(tr("[3/3] Python-Bibliotheken prüfen (\(names)) …",
+                            "[3/3] Checking Python libraries (\(names))…"))
                 let pipResult = CommandRunner.run(pip, ["install", "--upgrade"] + NXPaths.requiredPythonModules.map { $0.package })
                 self.log(pipResult.succeeded ? tr("✓ Python-Pakete aktuell", "✓ Python packages up to date")
                                              : "[\(tr("Warnung", "Warning"))] pip: \(pipResult.trimmedOutput)")

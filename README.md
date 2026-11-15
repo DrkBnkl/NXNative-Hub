@@ -22,9 +22,10 @@ The interface is fully localized in **English** and **German**.
 
 ### 🔨 Native macOS Builder & Batch Converter
 - **Single Game Builder**: Convert `.nsp` and `.xci` dumps into native macOS `.app` bundles with real-time build progress and live log output.
+- **Switch 2 Sources**: Build Switch 2 games from a `.nup` file or a dump folder (`base/`, `updates/`, `dlc/`) without `prod.keys`.
 - **Batch Import**: Automatically queue and process multiple titles placed in `~/NXNative/Import` with pre-flight game profile verification.
 - **Smart Rebuild Detection**: Detects existing build artifacts (`<titleID>_build`) to accelerate subsequent compilations and warns about insufficient storage.
-- **Safety First**: Source dump files are moved to the system Trash upon successful processing, never permanently deleted.
+- **Safety First**: Source files stay in the Import folder by default; optionally they are moved to the system Trash after a successful conversion, never permanently deleted.
 
 ### ⚙️ Deep Configuration Engine
 - **Native Game Settings**: Dynamically parses the game's internal `launcher.json` (supported in modern nxnative builds) to render native macOS preferences.
@@ -41,7 +42,7 @@ The interface is fully localized in **English** and **German**.
 - **In-App Updater**: Fetch upstream git updates, Python virtual environment packages, and toolchain dependencies directly from within the app.
 
 ### 🩺 Environment & Toolchain Diagnostics
-- **Automated Setup Check**: Verifies the host environment (Xcode, Metal toolchain, Apple Silicon Homebrew tools, .NET SDK, Python 3.12+, and `prod.keys`).
+- **Automated Setup Check**: Verifies the host environment (Xcode, Metal toolchain, Apple Silicon Homebrew tools, Python 3.12+, and `prod.keys`).
 - **One-Click Remediation**: Resolves missing prerequisites and installs toolchain components with a single click.
 - **Crash & Diagnostic Logging**: Direct access to current launch logs, previous launch logs, build failure diagnostics, and automated bug report packaging.
 
@@ -55,11 +56,10 @@ The interface is fully localized in **English** and **German**.
 
 ### Build Toolchain (for compiling games)
 - Apple Silicon Mac running macOS 26.6 or later
-- Xcode 27.1 (or Xcode with Metal Toolchain component)
+- Xcode 27.2 with its Metal Toolchain component
 - Homebrew (arm64) with `xcodegen`, `zstd`, and `glslang`
-- .NET SDK (via Homebrew cask `dotnet-sdk` or standard installer)
 - Python 3.12 or newer
-- Valid `prod.keys` extracted from your personal Nintendo Switch console
+- Valid `prod.keys` extracted from your personal Nintendo Switch console (not needed for Switch 2 games as `.nup` or dump folder)
 
 ---
 
@@ -73,13 +73,12 @@ You can allow NXNative Hub to install missing prerequisites automatically via **
 # Install toolchain components
 xcodebuild -downloadComponent MetalToolchain
 brew install xcodegen zstd glslang
-brew install --cask dotnet-sdk
 
 # Clone and prepare nxnative
 git clone https://github.com/seedds/nxnative ~/NXNative/nxnative
 cd ~/NXNative/nxnative
 python3 -m venv venv
-venv/bin/pip install lz4 capstone fonttools nsz "backports.zstd; python_version < '3.14'"
+venv/bin/pip install lz4 "capstone>=5,<6" fonttools nsz zbic "backports.zstd; python_version < '3.14'"
 ```
 
 ### 2. Building NXNative Hub from Source

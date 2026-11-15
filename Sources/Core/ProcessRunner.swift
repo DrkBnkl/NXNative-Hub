@@ -1,6 +1,6 @@
 import Foundation
 
-// MARK: - Synchronous commands (git, ps, pip, dotnet, ditto)
+// MARK: - Synchronous commands (git, ps, pip, xcrun, ditto)
 //
 // Executables are started directly with an argument array – no `zsh -c` and no
 // quoting, so paths containing quotes cannot break or inject commands.

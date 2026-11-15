@@ -3,7 +3,7 @@ import Foundation
 // MARK: - Setup check (prerequisites for building games)
 //
 // Verifies everything nxnative's build script needs (its README, "Install the tools"):
-// macOS and Xcode versions, the Metal toolchain, Homebrew tools, .NET, the nxnative repo with
+// macOS and Xcode versions, the Metal toolchain, Homebrew tools, the nxnative repo with
 // its venv and Python packages, and prod.keys.
 // Checks run on a background queue; some issues can be fixed with one click.
 
@@ -43,6 +43,21 @@ final class SetupChecker: ObservableObject {
 
     /// At least one required prerequisite is missing.
     var hasBlockingIssues: Bool { checks.contains { $0.status == .missing } }
+
+    private static let acknowledgedIssuesKey = "setupAcknowledgedIssues"
+    private var missingIDs: [String] { checks.filter { $0.status == .missing }.map(\.id).sorted() }
+
+    /// Whether the setup sheet should open by itself at launch: something required is missing
+    /// that the user has not already seen and left as it is. Missing prerequisites for building
+    /// (an older macOS, no full Xcode) must not prompt at every start of someone who only plays.
+    var shouldPromptAtLaunch: Bool {
+        hasBlockingIssues && missingIDs != (UserDefaults.standard.stringArray(forKey: Self.acknowledgedIssuesKey) ?? [])
+    }
+
+    /// Called when the setup sheet is closed: what is still missing then is known to the user.
+    func acknowledgeCurrentIssues() {
+        UserDefaults.standard.set(missingIDs, forKey: Self.acknowledgedIssuesKey)
+    }
     var issueCount: Int { checks.filter { $0.status != .ok }.count }
     var hasRun: Bool { lastRun != nil }
 
@@ -73,7 +88,8 @@ final class SetupChecker: ObservableObject {
         var results: [SetupCheck] = []
 
         results.append(macOSCheck())
-        results.append(contentsOf: xcodeChecks())
+        let xcode = xcodeChecks()
+        results.append(contentsOf: xcode.checks)
 
         // git
         let git = CommandRunner.tool("git", ["--version"])
@@ -85,7 +101,6 @@ final class SetupChecker: ObservableObject {
             fix: nil))
 
         results.append(brewToolsCheck())
-        results.append(dotnetCheck())
 
         // nxnative folder
         let repo = NXPaths.repoPath
@@ -176,6 +191,7 @@ final class SetupChecker: ObservableObject {
                 fix: missing.isEmpty ? nil : .installPythonPackages))
         }
 
+        if let metal = metalLockCheck(actual: xcode.metalVersion) { results.append(metal) }
         results.append(prodKeysCheck(path: prodKeysPath))
         return results
     }
@@ -199,27 +215,28 @@ final class SetupChecker: ObservableObject {
     }
 
     /// Xcode (not only the Command Line Tools) and its Metal toolchain.
-    private static func xcodeChecks() -> [SetupCheck] {
+    /// `metalVersion` is the first line of `metal --version`, nil if the compiler does not run.
+    private static func xcodeChecks() -> (checks: [SetupCheck], metalVersion: String?) {
         let select = CommandRunner.run("/usr/bin/xcode-select", ["-p"])
         guard select.succeeded else {
-            return [SetupCheck(
+            return ([SetupCheck(
                 id: "xcode",
                 title: "Xcode",
                 detail: tr("Nicht installiert. nxnative braucht Xcode \(NXPaths.testedXcodeVersion) aus dem App Store.",
                            "Not installed. nxnative needs Xcode \(NXPaths.testedXcodeVersion) from the App Store."),
                 status: .missing,
-                fix: .installCommandLineTools)]
+                fix: .installCommandLineTools)], nil)
         }
 
         let developerDir = select.trimmedOutput
         if developerDir.contains("CommandLineTools") {
-            return [SetupCheck(
+            return ([SetupCheck(
                 id: "xcode",
                 title: "Xcode",
                 detail: tr("Nur die Command Line Tools sind aktiv (\(developerDir)). nxnative braucht das vollständige Xcode \(NXPaths.testedXcodeVersion); nach der Installation „sudo xcode-select -s /Applications/Xcode.app“ ausführen.",
                            "Only the Command Line Tools are active (\(developerDir)). nxnative needs the full Xcode \(NXPaths.testedXcodeVersion); after installing it, run “sudo xcode-select -s /Applications/Xcode.app”."),
                 status: .missing,
-                fix: nil)]
+                fix: nil)], nil)
         }
 
         var results: [SetupCheck] = []
@@ -247,7 +264,29 @@ final class SetupChecker: ObservableObject {
                 : tr("Der Metal-Compiler fehlt – er wird seit Xcode 26 separat geladen.", "The Metal compiler is missing – since Xcode 26 it is downloaded separately."),
             status: metal.succeeded ? .ok : .missing,
             fix: metal.succeeded ? nil : .downloadMetalToolchain))
-        return results
+        let metalVersion = metal.succeeded ? metal.trimmedOutput.split(separator: "\n").first.map(String.init) : nil
+        return (results, metalVersion)
+    }
+
+    /// The shaders of NVN games are built only with the Metal compiler recorded in the repo's
+    /// dmsh_chain.lock; another one stops those builds (unless --allow-other-metal).
+    private static func metalLockCheck(actual: String?) -> SetupCheck? {
+        guard let actual, let lock = try? String(contentsOfFile: NXPaths.shaderChainLockPath, encoding: .utf8) else { return nil }
+        let expected = lock.split(separator: "\n").compactMap { line -> String? in
+            let cols = line.split(separator: "\t", maxSplits: 1).map(String.init)
+            return cols.count == 2 && cols[0] == "metal_macosx" ? cols[1].trimmingCharacters(in: .whitespaces) : nil
+        }.first
+        guard let expected else { return nil }
+        let matches = actual.trimmingCharacters(in: .whitespaces) == expected
+        return SetupCheck(
+            id: "metallock",
+            title: tr("Metal-Compiler-Version", "Metal Compiler Version"),
+            detail: matches
+                ? tr("Passt zu dmsh_chain.lock", "Matches dmsh_chain.lock")
+                : tr("\(actual) – nxnative erwartet \(expected). Builds von NVN-Spielen brechen damit vor den Shadern ab.",
+                     "\(actual) – nxnative expects \(expected). Builds of NVN games stop before their shaders."),
+            status: matches ? .ok : .warning,
+            fix: nil)
     }
 
     private static func brewToolsCheck() -> SetupCheck {
@@ -277,7 +316,7 @@ final class SetupChecker: ObservableObject {
         case .valid:
             detail = tr("Vorhanden", "Available")
         case .missing:
-            detail = tr("Nicht gefunden – die Schlüssel deiner eigenen Switch werden zum Entschlüsseln benötigt.", "Not found – the keys from your own Switch are required for decryption.")
+            detail = tr("Nicht gefunden – die Schlüssel deiner eigenen Switch werden zum Entschlüsseln von NSP/XCI benötigt (Switch-2-Spiele als .nup oder Dump brauchen keine).", "Not found – the keys from your own Switch are required to decrypt NSP/XCI (Switch 2 games as .nup or dump need none).")
         case .unreadable:
             detail = tr("Die Datei kann nicht gelesen werden.", "The file cannot be read.")
         case .incomplete:
@@ -288,19 +327,10 @@ final class SetupChecker: ObservableObject {
             id: "keys",
             title: "prod.keys",
             detail: detail,
-            status: validity == .valid ? .ok : .missing,
+            // No file is only a warning: Switch 2 games (.nup, dump folder) build without keys, and an
+            // NSP/XCI build checks for them itself. A wrong file is an error.
+            status: validity == .valid ? .ok : (validity == .missing ? .warning : .missing),
             fix: validity == .valid ? nil : .chooseProdKeys)
-    }
-
-    private static func dotnetCheck() -> SetupCheck {
-        let path = NXPaths.dotnetExecutable
-        return SetupCheck(
-            id: "dotnet",
-            title: ".NET SDK",
-            detail: path ?? tr("Nicht gefunden – nxnative baut damit nx_extract zum Entpacken der Spiele. Installation: „brew install --cask dotnet-sdk“ im Terminal (fragt nach dem Administrator-Passwort).",
-                               "Not found – nxnative uses it to build nx_extract, which unpacks games. Install it with “brew install --cask dotnet-sdk” in Terminal (asks for the administrator password)."),
-            status: path != nil ? .ok : .missing,
-            fix: nil)
     }
 
     /// "3.12" for the given interpreter, or nil.

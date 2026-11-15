@@ -12,7 +12,6 @@ enum NXPaths {
     static var gamesFolder: URL { URL(fileURLWithPath: "\(nxnativeRoot)/Games") }
     static var importFolder: URL { URL(fileURLWithPath: "\(nxnativeRoot)/Import") }
     static var liveLogPath: String { "\(nxnativeRoot)/build_live.log" }
-    static var dotnetRoot: String { "\(home)/.dotnet" }
 
     /// Configurations (env.txt) and saves per title ID
     static var appSupport: String { "\(home)/Library/Application Support/nxnative" }
@@ -46,20 +45,17 @@ enum NXPaths {
     static var pipPath: String { "\(venvPath)/bin/pip" }
     static var buildScriptPath: String { "\(repoPath)/scripts/build_ipa_from_nsp.py" }
     static var profileDirectory: String { "\(repoPath)/dm/games" }
-    static var nxExtractProject: String { "\(repoPath)/dm/tools/nx_extract" }
-
-    /// .NET SDK: ~/.dotnet (dotnet-install script) or the Homebrew cask (/usr/local/bin/dotnet).
-    static var dotnetExecutable: String? { findExecutable("dotnet") }
-
     /// Homebrew on Apple Silicon (an Intel Homebrew in /usr/local is not supported by nxnative).
     static let brewExecutable = "/opt/homebrew/bin/brew"
 
     /// Minimum versions nxnative documents (README, "Install the tools").
     static let minimumPython = (major: 3, minor: 12)
     static let minimumMacOS = OperatingSystemVersion(majorVersion: 26, minorVersion: 6, patchVersion: 0)
-    static let testedXcodeVersion = "27.1"
+    static let testedXcodeVersion = "27.2"
+    /// Metal compiler versions the shaders were tested with (`metal_macosx` etc.).
+    static var shaderChainLockPath: String { "\(repoPath)/dm/gfx/tools/dmsh_chain.lock" }
 
-    /// A Python package required by the build script.
+    /// A Python package required by the build script (check_prereqs in build_ipa_from_nsp.py).
     struct PythonRequirement {
         /// Import names; any one of them is enough (`|` alternatives, e.g. a backport).
         let modules: [String]
@@ -70,14 +66,16 @@ enum NXPaths {
 
     static let requiredPythonModules: [PythonRequirement] = [
         PythonRequirement(modules: ["lz4.block"], package: "lz4", displayName: "lz4"),
-        PythonRequirement(modules: ["capstone"], package: "capstone", displayName: "capstone"),
+        PythonRequirement(modules: ["capstone"], package: "capstone>=5,<6", displayName: "capstone"),
         PythonRequirement(modules: ["fontTools"], package: "fonttools", displayName: "fonttools"),
         // zstd is built into Python from 3.14 (compression.zstd); before that the backport is needed.
         PythonRequirement(modules: ["compression.zstd", "backports.zstd"],
                           package: "backports.zstd; python_version < '3.14'",
                           displayName: "backports.zstd"),
         // Needed for .nsz / .xcz files.
-        PythonRequirement(modules: ["nsz"], package: "nsz", displayName: "nsz")
+        PythonRequirement(modules: ["nsz"], package: "nsz", displayName: "nsz"),
+        // Segments of system 22.0.0+ modules (check_prereqs in build_ipa_from_nsp.py).
+        PythonRequirement(modules: ["zbic"], package: "zbic", displayName: "zbic")
     ]
 
     /// Homebrew formulae and the command each one provides (checked by the build script).
@@ -105,11 +103,17 @@ enum NXPaths {
     /// Switches fixed by the build itself (read after the player's env.txt, before saved choices).
     static func bundleEnvFilePath(appPath: String) -> String { "\(appPath)/Contents/Resources/dm/env.txt" }
 
-    /// File extensions of Switch game files
-    static let gameFileExtensions: Set<String> = ["nsp", "xci", "nsz", "xcz"]
+    /// File extensions of encrypted Switch game packages (need prod.keys)
+    static let packageFileExtensions: Set<String> = ["nsp", "xci", "nsz", "xcz"]
+    /// All game file extensions, including the Switch 2 NUP container
+    static let gameFileExtensions: Set<String> = packageFileExtensions.union(["nup"])
 
     static func isGameFile(_ url: URL) -> Bool {
         gameFileExtensions.contains(url.pathExtension.lowercased())
+    }
+
+    static func isPackageFile(_ url: URL) -> Bool {
+        packageFileExtensions.contains(url.pathExtension.lowercased())
     }
 
     /// First existing path, otherwise the last candidate (used in error messages).
@@ -117,23 +121,18 @@ enum NXPaths {
         candidates.first { FileManager.default.fileExists(atPath: $0) } ?? (candidates.last ?? "")
     }
 
-    /// Environment for all tool invocations (Python, git, dotnet, pip).
-    /// GUI apps on macOS don't inherit the login PATH, so Homebrew and .dotnet are added.
+    /// Environment for all tool invocations (Python, git, pip, xcrun).
+    /// GUI apps on macOS don't inherit the login PATH, so the Homebrew folders are added.
     static func toolEnvironment() -> [String: String] {
         var env = ProcessInfo.processInfo.environment
         env["PATH"] = (toolSearchPath + [env["PATH"]].compactMap { $0 }).joined(separator: ":")
-        // Only point .NET at ~/.dotnet if it is installed there; a Homebrew cask finds its own root.
-        if FileManager.default.isExecutableFile(atPath: "\(dotnetRoot)/dotnet") {
-            env["DOTNET_ROOT"] = dotnetRoot
-            env["DOTNET_ROOT_ARM64"] = dotnetRoot
-        }
         env["PYTHONUNBUFFERED"] = "1"
         return env
     }
 
-    /// GUI apps on macOS don't inherit the login PATH: Homebrew and .dotnet are added in front.
+    /// GUI apps on macOS don't inherit the login PATH: the Homebrew folders are added in front.
     static var toolSearchPath: [String] {
-        [dotnetRoot, "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"]
+        ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"]
     }
 
     /// First executable with that name on the tool PATH (like `which`).

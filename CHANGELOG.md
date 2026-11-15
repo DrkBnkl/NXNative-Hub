@@ -6,7 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ## [Unreleased]
 
 ### Added
+- Switch 2 games: build from a `.nup` file or a dump folder (`base/`, `updates/`, `dlc/`) in the builder and the batch import, without prod.keys; a dropped `.nup` file is built itself, and dumps without `base/` are recognized.
+- Switch 2 games as NSP/XCI are recognized and marked as not buildable yet, with a hint to use a `.nup` file or dump folder.
+- "Switch 2" badge in the library, the import list and the builder; warning when a Switch 2 game has no nxnative profile.
+- The Build Game overview lists the games in the Import folder, with checkboxes, refresh, Show in Finder and Move to Trash (asks first; not while a build runs).
+- Option in the batch import to move source files to the Trash after a successful conversion.
+- Setup check: the Metal compiler version is compared with nxnative's `dmsh_chain.lock`.
 - Save sync between Astris and nxnative in the game settings, with verified backups of both sides and automatic sync after a tested approval.
+
+### Changed
+- Batch import keeps the source files (NSP / XCI / NUP) in the Import folder by default.
+- After a build, the Hub opens or moves exactly the app the build announced, not any `.app` in the game folder.
+- Save import replaces the save as a whole; the current save is kept as `save_backup_<time>`, and nothing changes if that backup fails. Import is refused while the game runs and warns when the game syncs with a cloud saves folder.
+- The game language for builds offers every code nxnative takes (`en-US`, `en-GB`, `fr-CA`, `es-419`, `pt-BR`, `ru`, …); a saved `en` becomes `en-US`.
+- The setup check follows current nxnative: Xcode 27.2, the Python packages `zbic` and capstone 5.x, and no .NET SDK (nx_extract is a native tool since nxnative 641636e2; the updater no longer rebuilds it).
+- A missing prod.keys is a setup warning instead of a blocking issue; NSP/XCI builds still require it.
+- The setup sheet opens by itself at launch only for missing prerequisites it has not shown before.
 
 ### Fixed
 - Importing from Ryujinx could pick a device save instead of the user's own save.

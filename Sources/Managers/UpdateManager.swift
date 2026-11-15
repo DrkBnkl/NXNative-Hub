@@ -112,7 +112,7 @@ final class UpdateManager: ObservableObject {
 
             // 1. Stash local changes to tracked files – only if there are any and
             //    `stash push` succeeded, so an unrelated older stash is never popped.
-            self.log(tr("[1/4] Lokale Anpassungen sichern (git stash) …", "[1/4] Saving local changes (git stash)…"))
+            self.log(tr("[1/3] Lokale Anpassungen sichern (git stash) …", "[1/3] Saving local changes (git stash)…"))
             let status = CommandRunner.git(repo, "status", "--porcelain", "--untracked-files=no")
             var didStash = false
             if status.succeeded && !status.trimmedOutput.isEmpty {
@@ -123,7 +123,7 @@ final class UpdateManager: ObservableObject {
             }
 
             // 2. Pull
-            self.log(tr("[2/4] Aktualisierungen von GitHub laden …", "[2/4] Downloading updates from GitHub…"))
+            self.log(tr("[2/3] Aktualisierungen von GitHub laden …", "[2/3] Downloading updates from GitHub…"))
             let pull = CommandRunner.git(repo, "pull", "origin", branch)
             self.log(pull.trimmedOutput)
 
@@ -146,20 +146,12 @@ final class UpdateManager: ObservableObject {
                 return
             }
 
-            // 4. Rebuild nx_extract if .NET is installed
-            if let dotnet = NXPaths.dotnetExecutable {
-                self.log(tr("[3/4] nx_extract wird neu kompiliert …", "[3/4] Rebuilding nx_extract…"))
-                let build = CommandRunner.run(dotnet, ["build", NXPaths.nxExtractProject, "-c", "Release"])
-                self.log(build.succeeded ? tr("✓ nx_extract erfolgreich gebaut", "✓ nx_extract built successfully")
-                                         : "[\(tr("Warnung", "Warning"))] nx_extract: \(build.trimmedOutput)")
-            }
-
-            // 5. Upgrade Python packages
+            // 4. Upgrade Python packages (nx_extract is a committed native tool since nxnative 641636e2: no .NET build)
             let pip = NXPaths.pipPath
             if FileManager.default.fileExists(atPath: pip) {
                 let names = NXPaths.requiredPythonModules.map { $0.displayName }.joined(separator: ", ")
-                self.log(tr("[4/4] Python-Bibliotheken prüfen (\(names)) …",
-                            "[4/4] Checking Python libraries (\(names))…"))
+                self.log(tr("[3/3] Python-Bibliotheken prüfen (\(names)) …",
+                            "[3/3] Checking Python libraries (\(names))…"))
                 let pipResult = CommandRunner.run(pip, ["install", "--upgrade"] + NXPaths.requiredPythonModules.map { $0.package })
                 self.log(pipResult.succeeded ? tr("✓ Python-Pakete aktuell", "✓ Python packages up to date")
                                              : "[\(tr("Warnung", "Warning"))] pip: \(pipResult.trimmedOutput)")

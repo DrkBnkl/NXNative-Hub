@@ -3,13 +3,26 @@ import AppKit
 
 // MARK: - Save import (JKSV, Checkpoint, Ryujinx)
 //
-//  - Every import (including Ryujinx) backs up the existing save first.
+//  - The import is assembled in a staging folder first; the current save is only touched
+//    once the staging folder holds data.
+//  - The current save is renamed to save_backup_<timestamp> (never deleted). If that fails,
+//    nothing is changed. The imported save replaces it as a whole, so no mixed save results.
+//  - Refused while the game runs; warns when the game syncs its save with a cloud folder.
 //  - The title ID is read from ExtraData0 without alignment assumptions (`loadUnaligned`).
 
 enum SaveGameImporter {
     struct Result {
         let copiedCount: Int
         let backupPath: String?
+        /// Set when nothing was imported for a reason other than "no data found".
+        let errorMessage: String?
+        /// The game's cloud saves folder (`cloudSaves.folder`), if set: the game may replace
+        /// the imported save with the cloud copy at its next start.
+        let cloudSavesFolder: String?
+
+        static func failed(_ message: String) -> Result {
+            Result(copiedCount: 0, backupPath: nil, errorMessage: message, cloudSavesFolder: nil)
+        }
     }
 
     static func openSaveFolder(titleId: String) {
@@ -19,42 +32,109 @@ enum SaveGameImporter {
         NSWorkspace.shared.open(URL(fileURLWithPath: path))
     }
 
-    /// Imports folders, .zip archives or single files into the save folder.
-    static func importSaves(from urls: [URL], titleId: String) -> Result {
-        let fm = FileManager.default
-        let target = NXPaths.saveDirectory(titleId: titleId)
-        try? fm.createDirectory(atPath: target, withIntermediateDirectories: true)
-        let backup = backupExistingSave(titleId: titleId)
+    /// Imports folders, .zip archives or single files as the game's save.
+    static func importSaves(from urls: [URL], titleId: String, bundleId: String?) -> Result {
+        performImport(titleId: titleId, bundleId: bundleId) { staging in
+            let fm = FileManager.default
+            var copied = 0
+            for url in urls {
+                var isDir: ObjCBool = false
+                guard fm.fileExists(atPath: url.path, isDirectory: &isDir) else { continue }
 
-        var copied = 0
-        for url in urls {
-            var isDir: ObjCBool = false
-            guard fm.fileExists(atPath: url.path, isDirectory: &isDir) else { continue }
-
-            if isDir.boolValue {
-                let zips = ((try? fm.contentsOfDirectory(atPath: url.path)) ?? []).filter { $0.lowercased().hasSuffix(".zip") }
-                if zips.isEmpty {
-                    copied += copyContents(of: url.path, to: target)
-                } else {
-                    for zip in zips {
-                        copied += extractZip((url.path as NSString).appendingPathComponent(zip), to: target)
+                if isDir.boolValue {
+                    let zips = ((try? fm.contentsOfDirectory(atPath: url.path)) ?? []).filter { $0.lowercased().hasSuffix(".zip") }
+                    if zips.isEmpty {
+                        copied += copyContents(of: url.path, to: staging)
+                    } else {
+                        for zip in zips {
+                            copied += extractZip((url.path as NSString).appendingPathComponent(zip), to: staging)
+                        }
                     }
+                } else if url.pathExtension.lowercased() == "zip" {
+                    copied += extractZip(url.path, to: staging)
+                } else {
+                    let dst = (staging as NSString).appendingPathComponent(url.lastPathComponent)
+                    if copyIntoStaging(at: dst, from: url.path) { copied += 1 }
                 }
-            } else if url.pathExtension.lowercased() == "zip" {
-                copied += extractZip(url.path, to: target)
-            } else {
-                let dst = (target as NSString).appendingPathComponent(url.lastPathComponent)
-                if replaceItem(at: dst, with: url.path) { copied += 1 }
             }
+            return copied
         }
-        return Result(copiedCount: copied, backupPath: backup)
     }
 
-    static func importFromRyujinx(titleId: String, sourcePath: String) -> Result {
+    static func importFromRyujinx(titleId: String, bundleId: String?, sourcePath: String) -> Result {
+        performImport(titleId: titleId, bundleId: bundleId) { staging in
+            copyContents(of: sourcePath, to: staging)
+        }
+    }
+
+    /// Fills a staging folder, then swaps it in for the current save.
+    private static func performImport(titleId: String, bundleId: String?, fill: (String) -> Int) -> Result {
+        let fm = FileManager.default
+        if isGameRunning(titleId: titleId) {
+            return .failed(tr("Das Spiel läuft gerade. Beende es vor dem Import.",
+                              "The game is running. Quit it before importing."))
+        }
+
+        let configDir = NXPaths.gameConfigDirectory(titleId: titleId)
         let target = NXPaths.saveDirectory(titleId: titleId)
-        try? FileManager.default.createDirectory(atPath: target, withIntermediateDirectories: true)
-        let backup = backupExistingSave(titleId: titleId)
-        return Result(copiedCount: copyContents(of: sourcePath, to: target), backupPath: backup)
+        let staging = "\(configDir)/save.importing-\(UUID().uuidString)"
+        do {
+            try fm.createDirectory(atPath: staging, withIntermediateDirectories: true)
+        } catch {
+            return .failed(tr("Import fehlgeschlagen: \(error.localizedDescription)", "Import failed: \(error.localizedDescription)"))
+        }
+        // The staging folder holds only copies made here.
+        defer { if fm.fileExists(atPath: staging) { try? fm.removeItem(atPath: staging) } }
+
+        let copied = fill(staging)
+        guard copied > 0 else {
+            return Result(copiedCount: 0, backupPath: nil, errorMessage: nil, cloudSavesFolder: nil)
+        }
+
+        // Keep the current save as a backup (rename, no copy that could fail half-way).
+        var backup: String?
+        let existing = (try? fm.contentsOfDirectory(atPath: target)) ?? []
+        if !existing.isEmpty {
+            var path = "\(configDir)/save_backup_\(timestamp())"
+            var n = 2
+            while fm.fileExists(atPath: path) { path = "\(configDir)/save_backup_\(timestamp())_\(n)"; n += 1 }
+            do {
+                try fm.moveItem(atPath: target, toPath: path)
+                backup = path
+            } catch {
+                return .failed(tr("Der vorhandene Spielstand konnte nicht gesichert werden – nichts wurde geändert. (\(error.localizedDescription))",
+                                  "The existing save could not be backed up – nothing was changed. (\(error.localizedDescription))"))
+            }
+        } else if fm.fileExists(atPath: target) {
+            // An empty save folder holds no data.
+            try? fm.removeItem(atPath: target)
+        }
+
+        do {
+            try fm.moveItem(atPath: staging, toPath: target)
+        } catch {
+            if let backup { try? fm.moveItem(atPath: backup, toPath: target) }
+            return .failed(tr("Import fehlgeschlagen: \(error.localizedDescription)", "Import failed: \(error.localizedDescription)"))
+        }
+
+        return Result(copiedCount: copied, backupPath: backup, errorMessage: nil,
+                      cloudSavesFolder: bundleId.flatMap(cloudSavesFolder(bundleId:)))
+    }
+
+    /// Whether a running app is this game (by DMTitleID in its Info.plist).
+    private static func isGameRunning(titleId: String) -> Bool {
+        NSWorkspace.shared.runningApplications.contains { app in
+            guard let path = app.bundleURL?.path, path.hasSuffix(".app") else { return false }
+            return GameBundleInfo(appPath: path)?.titleId.uppercased() == titleId.uppercased()
+        }
+    }
+
+    /// The folder the game syncs its save with (docs/frontends.md, "The cloud saves folder").
+    static func cloudSavesFolder(bundleId: String) -> String? {
+        CFPreferencesAppSynchronize(bundleId as CFString)
+        guard let folder = CFPreferencesCopyAppValue("cloudSaves.folder" as CFString, bundleId as CFString) as? String,
+              !folder.isEmpty else { return nil }
+        return folder
     }
 
     /// Finds the Ryujinx save folder by the title ID stored in ExtraData0.
@@ -71,22 +151,11 @@ enum SaveGameImporter {
 
     // MARK: Helpers
 
-    /// Copies the current save to save_backup_<timestamp>, if one exists.
-    private static func backupExistingSave(titleId: String) -> String? {
-        let fm = FileManager.default
-        let source = NXPaths.saveDirectory(titleId: titleId)
-        guard let items = try? fm.contentsOfDirectory(atPath: source), !items.isEmpty else { return nil }
-
+    private static func timestamp() -> String {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyyMMdd_HHmmss"
-        let backupDir = "\(NXPaths.gameConfigDirectory(titleId: titleId))/save_backup_\(formatter.string(from: Date()))"
-        do {
-            try fm.copyItem(atPath: source, toPath: backupDir)
-            return backupDir
-        } catch {
-            return nil
-        }
+        return formatter.string(from: Date())
     }
 
     private static func extractZip(_ zipPath: String, to target: String) -> Int {
@@ -117,12 +186,14 @@ enum SaveGameImporter {
         for item in items where !item.hasPrefix(".") && !item.hasPrefix("__MACOSX") {
             let src = (sourceDir as NSString).appendingPathComponent(item)
             let dst = (targetDir as NSString).appendingPathComponent(item)
-            if replaceItem(at: dst, with: src) { count += 1 }
+            if copyIntoStaging(at: dst, from: src) { count += 1 }
         }
         return count
     }
 
-    private static func replaceItem(at destination: String, with source: String) -> Bool {
+    /// Copies into the staging folder. An item already there came from an earlier source of
+    /// the same import (a copy made here), so it is replaced.
+    private static func copyIntoStaging(at destination: String, from source: String) -> Bool {
         let fm = FileManager.default
         if fm.fileExists(atPath: destination) {
             try? fm.removeItem(atPath: destination)

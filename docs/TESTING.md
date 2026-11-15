@@ -10,7 +10,7 @@ This checklist outlines the manual test matrix to verify application stability, 
 - [ ] **Fully Provisioned**: With all dependencies installed, the app launches cleanly into the Library without blocking sheets.
 - [ ] **Virtual Environment**: Clicking **Create venv** creates `~/NXNative/nxnative/venv` and updates status to green.
 - [ ] **Package Provisioning**: Clicking **Install** for Python dependencies installs required wheels into the virtual environment.
-- [ ] **Toolchain Inspection**: The checklist validates macOS, Xcode, Metal toolchain, Homebrew tools (`xcodegen`, `zstd`, `glslang`), .NET SDK, and Python ≥ 3.12.
+- [ ] **Toolchain Inspection**: The checklist validates macOS, Xcode, Metal toolchain, Homebrew tools (`xcodegen`, `zstd`, `glslang`), and Python ≥ 3.12.
 - [ ] **Keys Verification**: Choosing an empty or corrupted text file as `prod.keys` is flagged as incomplete; builds are prevented until valid keys are selected.
 - [ ] **Custom Path**: Setting a custom path under **Settings → General → nxnative** persists across launches; clicking **Automatic** restores default.
 

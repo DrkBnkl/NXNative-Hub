@@ -27,13 +27,7 @@ struct ImportView: View {
                     }
                     .help(tr("Import-Ordner im Finder öffnen", "Open the Import folder in Finder"))
 
-                    Button {
-                        importManager.scanImportFolder()
-                    } label: {
-                        Label(tr("Erneut prüfen", "Rescan"), systemImage: "arrow.clockwise")
-                    }
-                    .disabled(importManager.isScanning || importManager.isConverting)
-                    .help(tr("Import-Ordner neu scannen", "Rescan the Import folder"))
+                    refreshButton
                 }
             }
             .confirmationDialog(tr("\(importManager.selectedCount) Spiele umwandeln?", "Convert \(importManager.selectedCount) games?"),
@@ -42,8 +36,11 @@ struct ImportView: View {
                 Button(tr("Umwandeln", "Convert")) { startConversion() }
                 Button(tr("Abbrechen", "Cancel"), role: .cancel) {}
             } message: {
-                Text(tr("Erfolgreich umgewandelte Spiele werden nach ~/NXNative/Games verschoben. Ihre Quelldateien im Import-Ordner werden danach in den Papierkorb gelegt.",
-                        "Successfully converted games are moved to ~/NXNative/Games. Their source files in the Import folder are then moved to the Trash."))
+                Text(importManager.trashSourcesAfterConversion
+                     ? tr("Erfolgreich umgewandelte Spiele werden nach ~/NXNative/Games verschoben. Ihre Quelldateien im Import-Ordner werden danach in den Papierkorb gelegt.",
+                          "Successfully converted games are moved to ~/NXNative/Games. Their source files in the Import folder are then moved to the Trash.")
+                     : tr("Erfolgreich umgewandelte Spiele werden nach ~/NXNative/Games verschoben. Ihre Quelldateien bleiben im Import-Ordner.",
+                          "Successfully converted games are moved to ~/NXNative/Games. Their source files stay in the Import folder."))
             }
     }
 
@@ -71,16 +68,27 @@ struct ImportView: View {
         ContentUnavailableView {
             Label(tr("Import-Ordner ist leer", "Import Folder Is Empty"), systemImage: "tray")
         } description: {
-            Text(tr("Lege Switch-Spiele (Ordner mit .nsp / .xci) in ~/NXNative/Import ab. Sie werden hier erkannt und können gesammelt umgewandelt werden.",
-                    "Place Switch games (folders with .nsp / .xci) in ~/NXNative/Import. They are detected here and can be converted in one go."))
+            Text(tr("Lege Switch-Spiele (Ordner mit .nsp / .xci) oder Switch-2-Spiele (.nup-Datei oder Dump-Ordner) in ~/NXNative/Import ab. Sie werden hier erkannt und können gesammelt umgewandelt werden.",
+                    "Place Switch games (folders with .nsp / .xci) or Switch 2 games (a .nup file or dump folder) in ~/NXNative/Import. They are detected here and can be converted in one go."))
         } actions: {
             Button(tr("Import-Ordner öffnen", "Open Import Folder")) {
                 importManager.openImportFolderInFinder()
             }
-            Button(tr("Erneut prüfen", "Rescan")) {
-                importManager.scanImportFolder()
-            }
+            refreshButton
         }
+    }
+
+    // MARK: Refresh
+
+    /// Rescans ~/NXNative/Import, e.g. after files were added or removed in Finder.
+    private var refreshButton: some View {
+        Button {
+            importManager.scanImportFolder()
+        } label: {
+            Label(tr("Aktualisieren", "Refresh"), systemImage: "arrow.clockwise")
+        }
+        .disabled(importManager.isScanning || importManager.isConverting)
+        .help(tr("Import-Ordner neu einlesen", "Rescan the Import folder"))
     }
 
     // MARK: Pending games
@@ -93,6 +101,7 @@ struct ImportView: View {
                         ImportGameRow(game: game) { isOn in
                             importManager.setSelection(for: game.id, to: isOn)
                         }
+                        .contextMenu { ImportGameContextMenu(game: game) }
                     }
                 } header: {
                     HStack {
@@ -103,6 +112,8 @@ struct ImportView: View {
                                 .foregroundStyle(.orange)
                         }
                         Spacer()
+                        refreshButton
+                            .buttonStyle(.borderless)
                         Menu(tr("Auswahl", "Select")) {
                             Button(tr("Alle auswählen", "Select All")) { importManager.selectAll() }
                             Button(tr("Nur unterstützte", "Supported Only")) { importManager.selectSupportedOnly() }
@@ -122,9 +133,18 @@ struct ImportView: View {
 
             Divider()
 
+            Toggle(tr("Quelldateien nach erfolgreicher Umwandlung in den Papierkorb legen",
+                      "Move source files to the Trash after a successful conversion"),
+                   isOn: $importManager.trashSourcesAfterConversion)
+                .toggleStyle(.checkbox)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 12)
+                .padding(.top, 10)
+                .background(.bar)
+
             HStack(spacing: 12) {
-                if !prefs.prodKeysExists {
-                    Label(tr("prod.keys fehlt – bitte in den Einstellungen festlegen.", "prod.keys missing – please set it in Settings."),
+                if importManager.selectionNeedsProdKeys && !prefs.prodKeysExists {
+                    Label(tr("prod.keys fehlt – bitte in den Einstellungen festlegen (Switch-2-Spiele brauchen keine).", "prod.keys missing – please set it in Settings (Switch 2 games need none)."),
                           systemImage: "exclamationmark.triangle.fill")
                         .foregroundStyle(.orange)
                         .font(.callout)
@@ -144,7 +164,7 @@ struct ImportView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.defaultAction)
-                .disabled(importManager.selectedCount == 0 || !prefs.prodKeysExists || buildManager.isRunning)
+                .disabled(importManager.selectedCount == 0 || (importManager.selectionNeedsProdKeys && !prefs.prodKeysExists) || buildManager.isRunning)
             }
             .padding(12)
             .background(.bar)
@@ -243,6 +263,45 @@ struct ImportView: View {
     }
 }
 
+// MARK: - Context menu for an import candidate
+
+struct ImportGameContextMenu: View {
+    @EnvironmentObject private var importManager: ImportBatchManager
+    @EnvironmentObject private var buildManager: BuildManager
+    @EnvironmentObject private var buildMonitor: ActiveBuildMonitor
+    let game: ImportGameItem
+
+    /// No folder is trashed while any build runs (batch, single build or one started in Terminal):
+    /// it may be reading this folder or writing into it.
+    private var buildIsRunning: Bool {
+        importManager.isConverting || buildManager.isRunning || buildMonitor.activeBuild != nil
+    }
+
+    var body: some View {
+        Button(tr("Im Finder zeigen", "Show in Finder")) {
+            importManager.revealInFinder(game)
+        }
+        Divider()
+        Button(tr("In den Papierkorb legen …", "Move to Trash…"), role: .destructive) {
+            confirmMoveToTrash()
+        }
+        .disabled(buildIsRunning)
+    }
+
+    private func confirmMoveToTrash() {
+        let alert = NSAlert()
+        alert.messageText = tr("„\(game.folderURL.lastPathComponent)“ in den Papierkorb legen?",
+                               "Move “\(game.folderURL.lastPathComponent)” to the Trash?")
+        alert.informativeText = tr("Der ganze Ordner mit den Spieldateien und einem begonnenen Build wird in den Papierkorb gelegt.",
+                                   "The whole folder with the game files and any build in progress is moved to the Trash.")
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: tr("In den Papierkorb legen", "Move to Trash"))
+        alert.addButton(withTitle: tr("Abbrechen", "Cancel"))
+        guard alert.runModal() == .alertFirstButtonReturn, !buildIsRunning else { return }
+        importManager.moveToTrash(game)
+    }
+}
+
 // MARK: - Row for an import candidate
 
 struct ImportGameRow: View {
@@ -262,6 +321,9 @@ struct ImportGameRow: View {
                 HStack {
                     Text(game.name)
                         .font(.headline)
+                    if game.isSwitch2 {
+                        BadgeView(text: "Switch 2", color: .red)
+                    }
                     Spacer()
                     Label(game.supportStatus.statusTitle, systemImage: game.supportStatus.iconName)
                         .font(.caption.weight(.semibold))
@@ -273,7 +335,7 @@ struct ImportGameRow: View {
                         Text(tid).font(.caption.monospaced())
                         Text("·")
                     }
-                    Text(tr("\(game.fileCount) Dateien", "\(game.fileCount) files"))
+                    Text(game.sourceDescription)
                     Text("·")
                     Text(ByteCountFormatter.string(fromByteCount: game.totalSizeBytes, countStyle: .file))
                 }

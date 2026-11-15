@@ -55,7 +55,7 @@ enum TargetPlatform: String, CaseIterable, Identifiable {
     }
 }
 
-// MARK: - Game language (DM_LANG / -l)
+// MARK: - Game language packed at build time (-l); codes as build_ipa_from_nsp.py takes them
 
 struct GameLanguage: Identifiable, Hashable {
     let code: String
@@ -67,16 +67,21 @@ struct GameLanguage: Identifiable, Hashable {
         [
             GameLanguage(code: "", name: tr("Automatisch (Spiel-Standard)", "Automatic (Game Default)")),
             GameLanguage(code: "de", name: tr("Deutsch", "German")),
-            GameLanguage(code: "en", name: tr("Englisch", "English")),
-            GameLanguage(code: "ja", name: tr("Japanisch", "Japanese")),
+            GameLanguage(code: "en-US", name: tr("Englisch (USA)", "English (US)")),
+            GameLanguage(code: "en-GB", name: tr("Englisch (Großbritannien)", "English (UK)")),
             GameLanguage(code: "fr", name: tr("Französisch", "French")),
+            GameLanguage(code: "fr-CA", name: tr("Französisch (Kanada)", "French (Canada)")),
             GameLanguage(code: "es", name: tr("Spanisch", "Spanish")),
+            GameLanguage(code: "es-419", name: tr("Spanisch (Lateinamerika)", "Spanish (Latin America)")),
             GameLanguage(code: "it", name: tr("Italienisch", "Italian")),
             GameLanguage(code: "nl", name: tr("Niederländisch", "Dutch")),
             GameLanguage(code: "pt", name: tr("Portugiesisch", "Portuguese")),
+            GameLanguage(code: "pt-BR", name: tr("Portugiesisch (Brasilien)", "Portuguese (Brazil)")),
+            GameLanguage(code: "ru", name: tr("Russisch", "Russian")),
+            GameLanguage(code: "ja", name: tr("Japanisch", "Japanese")),
+            GameLanguage(code: "ko", name: tr("Koreanisch", "Korean")),
             GameLanguage(code: "zh-Hans", name: tr("Chinesisch (vereinfacht)", "Chinese (Simplified)")),
-            GameLanguage(code: "zh-Hant", name: tr("Chinesisch (traditionell)", "Chinese (Traditional)")),
-            GameLanguage(code: "ko", name: tr("Koreanisch", "Korean"))
+            GameLanguage(code: "zh-Hant", name: tr("Chinesisch (traditionell)", "Chinese (Traditional)"))
         ]
     }
 }
@@ -158,7 +163,7 @@ struct GameBundleInfo {
 
 struct DetectedGameFile: Identifiable {
     enum Kind {
-        case base, update, dlc, rom
+        case base, update, dlc, rom, nup
 
         var title: String {
             switch self {
@@ -166,6 +171,7 @@ struct DetectedGameFile: Identifiable {
             case .update: return "Update"
             case .dlc: return "DLC"
             case .rom: return "ROM"
+            case .nup: return "NUP"
             }
         }
 
@@ -175,6 +181,7 @@ struct DetectedGameFile: Identifiable {
             case .update: return "arrow.triangle.2.circlepath.circle.fill"
             case .dlc: return "plus.rectangle.fill"
             case .rom: return "doc.fill"
+            case .nup: return "shippingbox.fill"
             }
         }
 
@@ -184,6 +191,7 @@ struct DetectedGameFile: Identifiable {
             case .update: return .green
             case .dlc: return .purple
             case .rom: return .secondary
+            case .nup: return .red
             }
         }
     }
@@ -195,6 +203,16 @@ struct DetectedGameFile: Identifiable {
     let sizeFormatted: String
     let kind: Kind
 
+    /// An entry of a Switch 2 dump folder (base/, updates/<version>/, dlc/<title ID>/);
+    /// `sizeBytes` is nil while the size is still being summed.
+    init(name: String, path: String, sizeBytes: Int64?, kind: Kind) {
+        self.name = name
+        self.path = path
+        self.sizeFormatted = sizeBytes.map { ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) } ?? "…"
+        self.sizeBytes = sizeBytes ?? 0
+        self.kind = kind
+    }
+
     init(url: URL) {
         self.name = url.lastPathComponent
         self.path = url.path
@@ -205,7 +223,9 @@ struct DetectedGameFile: Identifiable {
 
         // Heuristic based on the common file name pattern "Name [TitleID][vXXXX].nsp"
         let lower = url.lastPathComponent.lowercased()
-        if lower.contains("[v0]") {
+        if url.pathExtension.lowercased() == "nup" {
+            self.kind = .nup   // base game, updates and DLC in one container
+        } else if lower.contains("[v0]") {
             self.kind = .base
         } else if lower.contains("[v") {
             self.kind = .update

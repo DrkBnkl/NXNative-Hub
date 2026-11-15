@@ -34,3 +34,10 @@ enum SwitchTitleID {
         String(format: "%016llX", value)
     }
 }
+
+extension SwitchTitleID {
+    /// Switch 2 title IDs start with 04 (Switch 1: 01).
+    static func isSwitch2(_ titleId: String) -> Bool {
+        titleId.trimmingCharacters(in: .whitespaces).hasPrefix("04")
+    }
+}

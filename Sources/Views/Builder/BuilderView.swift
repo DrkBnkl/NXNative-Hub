@@ -50,17 +50,46 @@ struct BuilderView: View {
                             systemImage: "tray.and.arrow.down.fill"
                         )
                         Spacer()
+                        Button {
+                            importManager.openImportFolderInFinder()
+                        } label: {
+                            Image(systemName: "folder")
+                        }
+                        .buttonStyle(.borderless)
+                        .help(tr("Import-Ordner im Finder öffnen", "Open the Import folder in Finder"))
+                        Button {
+                            importManager.scanImportFolder()
+                        } label: {
+                            Image(systemName: "arrow.clockwise")
+                        }
+                        .buttonStyle(.borderless)
+                        .disabled(importManager.isScanning || importManager.isConverting)
+                        .help(tr("Import-Ordner neu einlesen", "Rescan the Import folder"))
                         if importManager.pendingCount > 0 {
-                            Button(tr("Jetzt umwandeln (\(importManager.pendingCount))", "Convert Now (\(importManager.pendingCount))")) {
+                            Button(tr("Jetzt umwandeln (\(importManager.selectedCount))", "Convert Now (\(importManager.selectedCount))")) {
                                 router.showingImportSheet = true
                             }
                             .buttonStyle(.borderedProminent)
+                            .disabled(importManager.selectedCount == 0)
                         } else {
                             Button(tr("Import öffnen …", "Open Import…")) {
                                 router.showingImportSheet = true
                             }
                             .buttonStyle(.bordered)
                         }
+                    }
+
+                    if importManager.isScanning && importManager.pendingGames.isEmpty {
+                        ProgressView(tr("Import-Ordner wird geprüft …", "Scanning Import folder…"))
+                            .controlSize(.small)
+                    }
+
+                    ForEach(importManager.pendingGames) { game in
+                        ImportOverviewRow(game: game) { isOn in
+                            importManager.setSelection(for: game.id, to: isOn)
+                        }
+                        .disabled(importManager.isConverting)
+                        .contextMenu { ImportGameContextMenu(game: game) }
                     }
                 }
             }
@@ -91,7 +120,7 @@ struct BuilderView: View {
         Section {
             HStack {
                 TextField(tr("Ordner", "Folder"), text: $form.gameDirectory,
-                          prompt: Text(tr("Ordner mit .nsp / .xci", "Folder containing .nsp / .xci")))
+                          prompt: Text(tr("Ordner mit .nsp / .xci / .nup oder Switch-2-Dump, oder .nup-Datei", "Folder with .nsp / .xci / .nup or a Switch 2 dump, or a .nup file")))
                 Button(tr("Auswählen …", "Choose…")) {
                     if let url = FilePanels.chooseFolders(multiple: false, prompt: tr("Auswählen", "Choose")).first {
                         form.gameDirectory = url.path
@@ -122,14 +151,54 @@ struct BuilderView: View {
                     }
                 }
             }
+            if form.isSwitch2 {
+                switch2Row
+            }
         } header: {
             Text(tr("Spiele-Ordner", "Game Folder"))
         } footer: {
-            if !form.gameDirectory.isEmpty && form.detectedFiles.isEmpty {
-                Text(tr("In diesem Ordner wurden keine .nsp-/.xci-Dateien gefunden.", "No .nsp / .xci files were found in this folder."))
+            if let hint = form.sourceHint {
+                Text(hint)
+                    .foregroundStyle(.orange)
+            } else if !form.gameDirectory.isEmpty && form.detectedFiles.isEmpty {
+                Text(tr("In diesem Ordner wurden keine .nsp-, .xci- oder .nup-Dateien und kein Switch-2-Dump (base/exefs, base/romfs) gefunden.",
+                        "No .nsp, .xci or .nup files and no Switch 2 dump (base/exefs, base/romfs) were found in this folder."))
                     .foregroundStyle(.orange)
             } else if !form.detectedFiles.isEmpty {
                 sourceFooter
+            }
+        }
+    }
+
+    /// Switch 2 game detected from a NUP or a dump folder: title ID and profile check.
+    private var switch2Row: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                BadgeView(text: "Switch 2", color: .red)
+                Text(form.switch2Profile?.name ?? tr("Unbekanntes Spiel", "Unknown game"))
+                    .font(.callout.weight(.semibold))
+                if let tid = form.switch2TitleId {
+                    Text(tid)
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                }
+            }
+            if case .switch2Packages = form.source {
+                Label(GameSourceKind.switch2PackagesHint, systemImage: "xmark.octagon.fill")
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if form.switch2Profile != nil {
+                Label(tr("nxnative-Profil vorhanden – keine prod.keys nötig.", "nxnative profile available – no prod.keys needed."),
+                      systemImage: "checkmark.circle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.green)
+            } else {
+                Label(tr("Kein nxnative-Profil für dieses Spiel – Switch-2-Spiele lassen sich nur mit Profil bauen.",
+                         "No nxnative profile for this game – Switch 2 games can only be built with a profile."),
+                      systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
             }
         }
     }
@@ -160,7 +229,7 @@ struct BuilderView: View {
     }
 
     private var dropZone: some View {
-        Label(tr("Spiele-Ordner hierher ziehen", "Drag a game folder here"), systemImage: "arrow.down.doc")
+        Label(tr("Spiele-Ordner oder .nup-Datei hierher ziehen", "Drag a game folder or .nup file here"), systemImage: "arrow.down.doc")
             .font(.callout)
             .foregroundStyle(isDropTargeted ? Color.accentColor : Color.secondary)
             .frame(maxWidth: .infinity, minHeight: 36)
@@ -192,7 +261,10 @@ struct BuilderView: View {
         } header: {
             Text(tr("Schlüssel", "Keys"))
         } footer: {
-            if prefs.prodKeysPath.isEmpty {
+            if form.isSwitch2 && form.source.isBuildable {
+                Text(tr("Für Switch-2-Spiele (.nup oder Dump-Ordner) werden keine prod.keys benötigt.",
+                        "Switch 2 games (.nup or dump folder) need no prod.keys."))
+            } else if prefs.prodKeysPath.isEmpty {
                 Text(tr("Die prod.keys deiner eigenen Switch werden zum Entschlüsseln benötigt.", "The prod.keys from your own Switch are required for decryption."))
             } else if prefs.prodKeysExists {
                 Label(tr("Datei gefunden", "File found"), systemImage: "checkmark.circle.fill")
@@ -413,5 +485,51 @@ struct BuildProgressView: View {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(manager.logs.joined(separator: "\n"), forType: .string)
+    }
+}
+
+// MARK: - Compact row for the Import folder overview
+
+private struct ImportOverviewRow: View {
+    let game: ImportGameItem
+    let onToggle: (Bool) -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Toggle(isOn: Binding(get: { game.isSelected }, set: onToggle)) {
+                EmptyView()
+            }
+            .toggleStyle(.checkbox)
+            .labelsHidden()
+            .accessibilityLabel(game.name)
+            Image(systemName: game.supportStatus.iconName)
+                .foregroundStyle(game.supportStatus.badgeColor)
+                .frame(width: 16)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(game.name)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    if game.isSwitch2 {
+                        BadgeView(text: "Switch 2", color: .red)
+                    }
+                }
+                Text(game.fileNames.isEmpty ? game.sourceDescription : game.fileNames.joined(separator: ", "))
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            Spacer()
+            Text(game.supportStatus.statusTitle)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(game.supportStatus.badgeColor)
+            Text(ByteCountFormatter.string(fromByteCount: game.totalSizeBytes, countStyle: .file))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(minWidth: 60, alignment: .trailing)
+        }
+        .help(game.supportStatus.statusDetail)
     }
 }

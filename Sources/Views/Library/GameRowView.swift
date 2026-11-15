@@ -43,6 +43,9 @@ struct GameRowView: View {
                 .foregroundStyle(.secondary)
 
                 HStack(spacing: 4) {
+                    if SwitchTitleID.isSwitch2(game.titleId) {
+                        BadgeView(text: "Switch 2", color: .red)
+                    }
                     if !game.fpsTarget.isEmpty {
                         BadgeView(text: "\(game.fpsTarget) FPS", color: game.fpsTarget == "60" ? .green : .blue)
                     }

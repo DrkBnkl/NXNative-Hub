@@ -352,16 +352,25 @@ struct GameSettingsSheet: View {
     private func importSave() {
         let urls = FilePanels.chooseSaveSources()
         guard !urls.isEmpty else { return }
-        let result = SaveGameImporter.importSaves(from: urls, titleId: settings.titleId)
+        let result = SaveGameImporter.importSaves(from: urls, titleId: settings.titleId, bundleId: bundleId)
         report(result)
     }
 
     private func importFromRyujinx(_ path: String) {
-        report(SaveGameImporter.importFromRyujinx(titleId: settings.titleId, sourcePath: path))
+        report(SaveGameImporter.importFromRyujinx(titleId: settings.titleId, bundleId: bundleId, sourcePath: path))
     }
 
+    /// The game's preferences domain (for its cloud saves folder), nil if unknown.
+    private var bundleId: String? { settings.bundleId.isEmpty ? nil : settings.bundleId }
+
     private func report(_ result: SaveGameImporter.Result) {
-        if result.copiedCount > 0 {
+        if let error = result.errorMessage {
+            settings.showStatus(error, isError: true)
+        } else if result.copiedCount > 0, let cloud = result.cloudSavesFolder {
+            // Shown as a lasting notice: the game may replace the import with the cloud copy.
+            settings.showStatus(tr("Spielstand importiert. Achtung: Das Spiel synchronisiert mit \(cloud) und könnte beim nächsten Start die Cloud-Kopie verwenden.",
+                                   "Save imported. Note: the game syncs with \(cloud) and may use the cloud copy at its next start."), isError: true)
+        } else if result.copiedCount > 0 {
             settings.showStatus(tr("Spielstand importiert (\(result.copiedCount) Objekte)", "Save imported (\(result.copiedCount) items)"), isError: false)
         } else {
             settings.showStatus(tr("Keine Speicherdaten gefunden", "No save data found"), isError: true)

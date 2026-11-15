@@ -81,12 +81,18 @@ enum ImportGameSupportStatus: Hashable {
 
 // MARK: - Profile database
 
-/// Thread safety: `reload()` and `profile(for:)` are only called from the import scan,
-/// which runs serially on a background queue.
+/// Thread safety: the import scan reloads on a background queue while the builder
+/// looks up profiles on the main thread, so access to `profiles` is locked.
 final class ProfileDatabase {
     static let shared = ProfileDatabase()
 
-    private(set) var profiles: [String: NXGameProfile] = [:]
+    private let lock = NSLock()
+    private var storage: [String: NXGameProfile] = [:]
+
+    var profiles: [String: NXGameProfile] {
+        lock.lock(); defer { lock.unlock() }
+        return storage
+    }
 
     init() {
         reload()
@@ -121,11 +127,14 @@ final class ProfileDatabase {
                 loaded[titleId] = NXGameProfile(titleId: titleId, name: name, builds: builds, defaultPackage: package)
             }
         }
-        profiles = loaded
+        lock.lock()
+        storage = loaded
+        lock.unlock()
     }
 
     func profile(for titleId: String) -> NXGameProfile? {
         guard let clean = SwitchTitleID.normalized(titleId) else { return nil }
+        let profiles = self.profiles
         if let p = profiles[clean] { return p }
         if let base = SwitchTitleID.baseID(of: clean), let p = profiles[base] { return p }
         if let legacy = SwitchTitleID.legacyBaseID(of: clean), let p = profiles[legacy] { return p }
@@ -140,6 +149,7 @@ struct DetectedGameMeta {
     let baseTitleId: String?
     let detectedVersions: [Int]
     let gameFiles: [URL]
+    let source: GameSourceKind
 }
 
 enum GameMetaDetector {
@@ -150,10 +160,28 @@ enum GameMetaDetector {
     static func detect(in folderURL: URL) -> DetectedGameMeta {
         let fm = FileManager.default
         guard let files = try? fm.contentsOfDirectory(at: folderURL, includingPropertiesForKeys: nil) else {
-            return DetectedGameMeta(titleId: nil, baseTitleId: nil, detectedVersions: [], gameFiles: [])
+            return DetectedGameMeta(titleId: nil, baseTitleId: nil, detectedVersions: [], gameFiles: [], source: .none)
         }
 
-        let gameFiles = files.filter(NXPaths.isGameFile)
+        // Switch 2: the title ID and versions come from the container or the dump's main.npdm.
+        let source = GameSourceKind.detect(in: folderURL)
+        switch source {
+        case .nup(let nup):
+            return switch2Meta(NUPReader.read(nup), gameFiles: [nup], source: source)
+        case .dump:
+            return switch2Meta(DumpFolderReader.read(folderURL), gameFiles: [], source: source)
+        case .switch2Packages(let packages):
+            let tid = GameSourceKind.switch2TitleID(in: packages)
+            return DetectedGameMeta(titleId: tid,
+                                    baseTitleId: tid.flatMap { SwitchTitleID.baseID(of: $0) },
+                                    detectedVersions: [],
+                                    gameFiles: packages,
+                                    source: source)
+        case .packages, .none:
+            break
+        }
+
+        let gameFiles = files.filter(NXPaths.isPackageFile)
         var detectedTid: String?
         var versions: Set<Int> = []
 
@@ -192,7 +220,17 @@ enum GameMetaDetector {
         return DetectedGameMeta(titleId: detectedTid,
                                 baseTitleId: baseTid,
                                 detectedVersions: versions.sorted(),
-                                gameFiles: gameFiles)
+                                gameFiles: gameFiles,
+                                source: source)
+    }
+
+    private static func switch2Meta(_ contents: GameSourceContents?, gameFiles: [URL], source: GameSourceKind) -> DetectedGameMeta {
+        let tid = contents?.titleId
+        return DetectedGameMeta(titleId: tid,
+                                baseTitleId: tid.flatMap { SwitchTitleID.baseID(of: $0) } ?? tid,
+                                detectedVersions: contents?.versions ?? [],
+                                gameFiles: gameFiles,
+                                source: source)
     }
 
     private static func firstGroup(_ regex: NSRegularExpression?, in text: String) -> String? {
@@ -204,11 +242,23 @@ enum GameMetaDetector {
 
     /// Compares detected versions with the builds listed in the profile.
     static func evaluateSupportStatus(meta: DetectedGameMeta) -> ImportGameSupportStatus {
+        if case .switch2Packages = meta.source {
+            return .unsupported(reason: GameSourceKind.switch2PackagesHint)
+        }
         guard let baseTid = meta.baseTitleId else {
+            if case .nup = meta.source {
+                return .unsupported(reason: tr("NUP-Datei konnte nicht gelesen werden (beschädigt oder unvollständig kopiert?)",
+                                               "Could not read the NUP file (damaged or partly copied?)"))
+            }
             return .unsupported(reason: tr("Keine Switch-Title-ID erkannt", "No Switch title ID detected"))
         }
         guard let profile = ProfileDatabase.shared.profile(for: meta.titleId ?? baseTid)
                 ?? ProfileDatabase.shared.profile(for: baseTid) else {
+            if meta.source.isSwitch2Source {
+                // NUPs and dumps are packed only for games with a profile (the survey reads NSPs).
+                return .unsupported(reason: tr("Kein nxnative-Profil für ID \(baseTid) – Switch-2-Spiele lassen sich nur mit Profil bauen",
+                                               "No nxnative profile for ID \(baseTid) – Switch 2 games can only be built with a profile"))
+            }
             return .unsupported(reason: tr("Kein nxnative-Profil für ID \(baseTid) vorhanden (experimentell)",
                                            "No nxnative profile for ID \(baseTid) (experimental)"))
         }

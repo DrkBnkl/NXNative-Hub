@@ -202,6 +202,7 @@ struct SetupSheet: View {
             HStack {
                 Spacer()
                 Button(checker.hasBlockingIssues ? tr("Später", "Later") : tr("Fertig", "Done")) {
+                    checker.acknowledgeCurrentIssues()
                     router.showingSetup = false
                 }
                 .keyboardShortcut(checker.hasBlockingIssues ? KeyboardShortcut.cancelAction : KeyboardShortcut.defaultAction)

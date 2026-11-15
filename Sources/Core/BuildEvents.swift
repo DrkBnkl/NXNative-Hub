@@ -46,11 +46,24 @@ enum BuildEvent {
         }
     }
 
+    /// The `game` event: sent once when name, version and bundle ID are settled.
+    struct GameInfo {
+        var titleId: String?
+        var name: String?
+        var version: String?
+        var bundleId: String?
+        /// The IPA or Mac app the build will write (nil for --prepare-xcode).
+        var out: String?
+        /// The icon image; copy it before the build ends (an IPA build may delete it).
+        var icon: String?
+    }
+
     case stage(index: Int?, total: Int?, name: String?, step: String?)
     case step(String)
     case progress(Progress)
     case stageEnd(name: String, ok: Bool, elapsed: Double, summary: String)
     case say(String)
+    case game(GameInfo)
     case otherJSON(String)
     case text(String)
 
@@ -89,6 +102,13 @@ enum BuildEvent {
                              ok: ok,
                              elapsed: number(json["elapsed"]) ?? 0,
                              summary: (json["summary"] as? String) ?? "")
+        case "game":
+            return .game(GameInfo(titleId: json["title_id"] as? String,
+                                  name: json["name"] as? String,
+                                  version: json["version"] as? String,
+                                  bundleId: json["bundle_id"] as? String,
+                                  out: json["out"] as? String,
+                                  icon: json["icon"] as? String))
         case "say":
             guard let msg = json["msg"] as? String else { return .otherJSON(line) }
             return .say(msg)
@@ -115,6 +135,8 @@ enum BuildEvent {
             return "\(ok ? "✓" : "✗") \(trans.title) \(tr("abgeschlossen", "finished")) (\(Self.formatElapsed(elapsed)))"
         case let .say(message):
             return message
+        case let .game(info):
+            return "🎮 \(info.name ?? "?") (\(info.titleId ?? "?"))" + (info.out.map { " → \($0)" } ?? "")
         case let .otherJSON(line), let .text(line):
             return line
         }
@@ -156,6 +178,11 @@ enum BuildStageInfo {
         if lower.contains("nx_extract") {
             return (tr("Vorbereitung (nx_extract)", "Preparation (nx_extract)"),
                     tr("Entpackungs-Werkzeuge initialisieren", "Initializing extraction tools"))
+        } else if lower.hasPrefix("unpack ") || (lower.hasPrefix("pack ") && !lower.contains("ipa")) {
+            // Switch 2: "unpack v458752" (NUP), "pack v0" (dump folder), "unpack DLC" / "pack DLC"
+            return (tr("Switch-2-Spieldaten packen", "Pack Switch 2 Game Data"),
+                    tr("Code und RomFS werden aus dem NUP-Container bzw. Dump-Ordner übernommen – ohne Entschlüsselung …",
+                       "Code and RomFS are taken from the NUP container or dump folder – no decryption needed…"))
         } else if lower.contains("extract") {
             return (tr("RomFS-Spieldaten entpacken", "Extract RomFS Data"),
                     tr("Spieldateien werden aus dem NSP-Image dekomprimiert …", "Decompressing game files from NSP image…"))

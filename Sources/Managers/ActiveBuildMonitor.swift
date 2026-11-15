@@ -79,7 +79,8 @@ final class ActiveBuildMonitor: ObservableObject {
                 }
                 if let range = line.range(of: "build_ipa_from_nsp.py ") {
                     let after = line[range.upperBound...]
-                    let end = after.range(of: " -k ")?.lowerBound ?? after.endIndex
+                    // The game folder ends at the first option (`-k` is missing for Switch 2 builds).
+                    let end = [" -k ", " --platform "].compactMap { after.range(of: $0)?.lowerBound }.min() ?? after.endIndex
                     gameFolder = String(after[..<end])
                         .trimmingCharacters(in: .whitespaces)
                         .trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))

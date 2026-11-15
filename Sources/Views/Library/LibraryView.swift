@@ -85,8 +85,8 @@ struct LibraryView: View {
         ContentUnavailableView {
             Label(tr("Noch keine Spiele", "No Games Yet"), systemImage: "gamecontroller")
         } description: {
-            Text(tr("Wandle deine Switch-Spiele (.nsp / .xci) in native Mac-Apps um oder ziehe eine fertige .app hierher.",
-                    "Convert your Switch games (.nsp / .xci) into native Mac apps, or drag a converted .app here."))
+            Text(tr("Wandle deine Switch-Spiele (.nsp / .xci) und Switch-2-Spiele (.nup / Dump) in native Mac-Apps um oder ziehe eine fertige .app hierher.",
+                    "Convert your Switch games (.nsp / .xci) and Switch 2 games (.nup / dump) into native Mac apps, or drag a converted .app here."))
         } actions: {
             Button(tr("Spiel bauen", "Build Game")) {
                 router.selection = .builder
@@ -160,16 +160,31 @@ struct LibraryView: View {
     private func importSave(for game: InstalledGame) {
         let urls = FilePanels.chooseSaveSources()
         guard !urls.isEmpty else { return }
-        let result = SaveGameImporter.importSaves(from: urls, titleId: game.titleId)
+        let bundleId = GameBundleInfo(appPath: game.path)?.bundleId
+        let result = SaveGameImporter.importSaves(from: urls, titleId: game.titleId, bundleId: bundleId)
         let alert = NSAlert()
-        alert.messageText = result.copiedCount > 0
-            ? tr("Spielstand importiert", "Save Imported")
-            : tr("Keine Spielstände gefunden", "No Save Data Found")
-        alert.informativeText = result.copiedCount > 0
-            ? tr("\(result.copiedCount) Dateien/Ordner wurden übernommen.", "\(result.copiedCount) files/folders were imported.")
-                + (result.backupPath != nil ? "\n" + tr("Der vorherige Spielstand wurde gesichert.", "The previous save was backed up.") : "")
-            : tr("In der Auswahl wurden keine Speicherdaten gefunden.", "No save data was found in the selection.")
-        alert.alertStyle = result.copiedCount > 0 ? .informational : .warning
+        if let error = result.errorMessage {
+            alert.messageText = tr("Import nicht möglich", "Import Not Possible")
+            alert.informativeText = error
+            alert.alertStyle = .warning
+        } else if result.copiedCount > 0 {
+            alert.messageText = tr("Spielstand importiert", "Save Imported")
+            var text = tr("\(result.copiedCount) Dateien/Ordner wurden übernommen.", "\(result.copiedCount) files/folders were imported.")
+            if let backup = result.backupPath {
+                text += "\n" + tr("Der vorherige Spielstand liegt in \((backup as NSString).lastPathComponent).",
+                                   "The previous save is in \((backup as NSString).lastPathComponent).")
+            }
+            if let cloud = result.cloudSavesFolder {
+                text += "\n\n" + tr("Achtung: Das Spiel synchronisiert seinen Spielstand mit \(cloud) und könnte beim nächsten Start die Cloud-Kopie verwenden.",
+                                      "Note: the game syncs its save with \(cloud) and may use the cloud copy at its next start.")
+            }
+            alert.informativeText = text
+            alert.alertStyle = result.cloudSavesFolder == nil ? .informational : .warning
+        } else {
+            alert.messageText = tr("Keine Spielstände gefunden", "No Save Data Found")
+            alert.informativeText = tr("In der Auswahl wurden keine Speicherdaten gefunden.", "No save data was found in the selection.")
+            alert.alertStyle = .warning
+        }
         alert.runModal()
     }
 

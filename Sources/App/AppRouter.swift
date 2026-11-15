@@ -23,8 +23,21 @@ enum GameActions {
         launch(appPath: game.path)
     }
 
-    static func launch(appPath: String) {
-        NSWorkspace.shared.open(URL(fileURLWithPath: appPath))
+    /// `skipSettingsWindow` starts the game with `DM_LAUNCHER=0`, for when the Hub already
+    /// showed its settings. The saved choices apply either way.
+    static func launch(appPath: String, skipSettingsWindow: Bool = false) {
+        let url = URL(fileURLWithPath: appPath)
+        guard skipSettingsWindow else {
+            NSWorkspace.shared.open(url)
+            return
+        }
+        let config = NSWorkspace.OpenConfiguration()
+        config.environment = ["DM_LAUNCHER": "0"]
+        NSWorkspace.shared.openApplication(at: url, configuration: config) { _, error in
+            if error != nil {
+                DispatchQueue.main.async { NSWorkspace.shared.open(url) }
+            }
+        }
     }
 
     /// Opens the game settings. Does nothing (system beep) if the Info.plist has no title ID.

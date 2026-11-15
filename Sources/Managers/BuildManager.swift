@@ -11,12 +11,13 @@ struct BuildOptions {
     var keepExtracted: Bool
     var appName: String
 
-    /// Command line for build_ipa_from_nsp.py
+    /// Command line for build_ipa_from_nsp.py. Without prod.keys (Switch 2 NUPs and dumps
+    /// need none) `-k` is left out; the script would otherwise ask for it.
     func arguments(scriptPath: String) -> [String] {
-        var args = [scriptPath, gameDirectory,
-                    "-k", prodKeysPath,
-                    "--platform", platform.rawValue,
-                    "--progress", "json"]
+        var args = [scriptPath, gameDirectory]
+        if !prodKeysPath.isEmpty { args += ["-k", prodKeysPath] }
+        args += ["--platform", platform.rawValue,
+                 "--progress", "json"]
         if !language.isEmpty { args += ["-l", language] }
         args.append(showFps ? "--show-fps" : "--no-show-fps")
         if keepExtracted { args.append("--keep-extracted") }
@@ -45,6 +46,9 @@ final class BuildManager: ObservableObject {
 
     private var runner: StreamingProcess?
 
+    /// `out` of the current build's `game` event (cleared when a build starts).
+    private var announcedOutput: String?
+
     func reset() {
         isRunning = false
         currentStageIndex = 0
@@ -60,6 +64,7 @@ final class BuildManager: ObservableObject {
         buildSucceeded = false
         createdArtifactPath = nil
         errorMessage = nil
+        announcedOutput = nil
     }
 
     func cancel() {
@@ -88,7 +93,7 @@ final class BuildManager: ObservableObject {
             fail(tr("nxnative-Skript nicht gefunden unter:\n\(scriptPath)", "nxnative script not found at:\n\(scriptPath)"))
             return
         }
-        guard fm.fileExists(atPath: options.prodKeysPath) else {
+        guard options.prodKeysPath.isEmpty || fm.fileExists(atPath: options.prodKeysPath) else {
             fail(tr("prod.keys nicht gefunden unter:\n\(options.prodKeysPath)", "prod.keys not found at:\n\(options.prodKeysPath)"))
             return
         }
@@ -166,6 +171,10 @@ final class BuildManager: ObservableObject {
         case let .say(message):
             appendLog(message)
 
+        case let .game(info):
+            announcedOutput = info.out
+            if let out = info.out { appendLog("\(tr("Ausgabe", "Output")): \(out)") }
+
         case let .otherJSON(text), let .text(text):
             appendLog(text)
         }
@@ -179,14 +188,34 @@ final class BuildManager: ObservableObject {
 
         if buildSucceeded {
             appendLog("\n" + tr("✓ Build erfolgreich beendet.", "✓ Build finished successfully."))
-            findOutputArtifact(gameDir: options.gameDirectory, platform: options.platform)
+            findOutputArtifact(gameDir: Self.outputFolder(of: options.gameDirectory), platform: options.platform)
         } else {
             appendLog("\n" + tr("✗ Build mit Fehler beendet (Exit-Code \(exitCode)).", "✗ Build failed (exit code \(exitCode))."))
             errorMessage = tr("Build fehlgeschlagen. Details stehen im Protokoll.", "Build failed. See the log for details.")
         }
     }
 
+    /// The folder the build writes into: the game folder, or the folder of a .nup file given
+    /// in its place.
+    private static func outputFolder(of gameSource: String) -> String {
+        var isDir: ObjCBool = false
+        let isFile = FileManager.default.fileExists(atPath: gameSource, isDirectory: &isDir) && !isDir.boolValue
+        return isFile ? (gameSource as NSString).deletingLastPathComponent : gameSource
+    }
+
+    /// Uses the exact path from the `game` event; only an older nxnative without that event
+    /// falls back to the first matching bundle in the game folder.
     private func findOutputArtifact(gameDir: String, platform: TargetPlatform) {
+        if let out = announcedOutput {
+            let url = URL(fileURLWithPath: out, relativeTo: URL(fileURLWithPath: gameDir, isDirectory: true)).standardizedFileURL
+            if FileManager.default.fileExists(atPath: url.path) {
+                createdArtifactPath = url.path
+                appendLog("\(tr("Erstellt", "Created")): \(url.lastPathComponent)")
+            } else {
+                appendLog(tr("⚠︎ Angekündigte Ausgabe nicht gefunden: \(url.path)", "⚠︎ Announced output not found: \(url.path)"))
+            }
+            return
+        }
         guard let files = try? FileManager.default.contentsOfDirectory(at: URL(fileURLWithPath: gameDir),
                                                                        includingPropertiesForKeys: nil) else { return }
         let wanted: String

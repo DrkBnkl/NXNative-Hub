@@ -13,7 +13,20 @@ struct ImportGameItem: Identifiable, Hashable {
     let titleId: String?
     let baseTitleId: String?
     let supportStatus: ImportGameSupportStatus
+    let source: GameSourceKind
     var isSelected: Bool
+
+    var needsProdKeys: Bool { source.needsProdKeys }
+    var isSwitch2: Bool { source.isSwitch2Source || baseTitleId.map(SwitchTitleID.isSwitch2) == true }
+
+    var sourceDescription: String {
+        switch source {
+        case .nup: return tr("NUP-Container", "NUP container")
+        case .dump: return tr("Dump-Ordner", "Dump folder")
+        case .switch2Packages: return tr("Switch-2-NSP", "Switch 2 NSP")
+        case .packages, .none: return tr("\(fileCount) Dateien", "\(fileCount) files")
+        }
+    }
 }
 
 final class ImportBatchManager: ObservableObject {
@@ -32,8 +45,17 @@ final class ImportBatchManager: ObservableObject {
     @Published private(set) var conversionResults: [String: Bool] = [:]
     @Published private(set) var wasCancelled = false
     @Published var isFinished = false
+    /// Opt-in: move a game's source files to the Trash after a successful conversion.
+    /// Off by default, so NSP / XCI / NUP files stay in the Import folder.
+    @Published var trashSourcesAfterConversion = false
 
     private var runner: StreamingProcess?
+
+    /// `out` of the current game's `game` event, and the folder it is relative to.
+
+    private var announcedOutput: URL?
+
+    private var currentGameFolder: URL?
     private var cancelRequested = false
     private let scanQueue = DispatchQueue(label: "org.nxnative.importScan", qos: .userInitiated)
 
@@ -46,6 +68,8 @@ final class ImportBatchManager: ObservableObject {
     var selectedCount: Int { pendingGames.filter(\.isSelected).count }
     var supportedCount: Int { pendingGames.filter { $0.supportStatus.isSupported }.count }
     var unsupportedCount: Int { pendingCount - supportedCount }
+    /// prod.keys is only needed when a selected game comes as NSP / XCI (not for Switch 2 NUPs or dumps).
+    var selectionNeedsProdKeys: Bool { pendingGames.contains { $0.isSelected && $0.needsProdKeys } }
 
     // MARK: Selection
 
@@ -85,7 +109,7 @@ final class ImportBatchManager: ObservableObject {
         }
     }
 
-    /// Moves loose .nsp/.xci files in the import folder into one subfolder per game.
+    /// Moves loose .nsp/.xci/.nup files in the import folder into one subfolder per game.
     private static func sortLooseFilesIntoFolders(in folder: URL) {
         let fm = FileManager.default
         guard let contents = try? fm.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles]) else { return }
@@ -114,21 +138,24 @@ final class ImportBatchManager: ObservableObject {
             guard isDir else { continue }
 
             let meta = GameMetaDetector.detect(in: item)
-            guard !meta.gameFiles.isEmpty else { continue }
+            guard !meta.gameFiles.isEmpty || meta.source == .dump else { continue }
 
-            let totalSize = meta.gameFiles.reduce(Int64(0)) { sum, file in
-                sum + (((try? fm.attributesOfItem(atPath: file.path))?[.size] as? NSNumber)?.int64Value ?? 0)
-            }
+            let totalSize = meta.source == .dump
+                ? DumpFolderReader.totalSize(of: item)
+                : meta.gameFiles.reduce(Int64(0)) { sum, file in
+                    sum + (((try? fm.attributesOfItem(atPath: file.path))?[.size] as? NSNumber)?.int64Value ?? 0)
+                }
             let status = GameMetaDetector.evaluateSupportStatus(meta: meta)
 
             found.append(ImportGameItem(name: status.profile?.name ?? item.lastPathComponent,
                                         folderURL: item,
-                                        fileCount: meta.gameFiles.count,
+                                        fileCount: max(meta.gameFiles.count, 1),
                                         totalSizeBytes: totalSize,
                                         fileNames: meta.gameFiles.map(\.lastPathComponent),
                                         titleId: meta.titleId,
                                         baseTitleId: meta.baseTitleId,
                                         supportStatus: status,
+                                        source: meta.source,
                                         isSelected: status.isSupported))
         }
         return found.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
@@ -185,6 +212,8 @@ final class ImportBatchManager: ObservableObject {
 
         let game = activeBatchGames[currentGameIndex]
         let total = activeBatchGames.count
+        announcedOutput = nil
+        currentGameFolder = game.folderURL
         currentGameName = game.name
         currentStageText = tr("Umwandlung wird gestartet …", "Starting conversion…")
         progressPercentage = Double(currentGameIndex) / Double(max(1, total))
@@ -195,7 +224,7 @@ final class ImportBatchManager: ObservableObject {
         appendLog("\(tr("Ordner", "Folder")): \(game.folderURL.path)")
 
         let options = BuildOptions(gameDirectory: game.folderURL.path,
-                                   prodKeysPath: prodKeysPath,
+                                   prodKeysPath: game.needsProdKeys ? prodKeysPath : "",
                                    platform: .macApp,
                                    language: language,
                                    showFps: false,
@@ -241,16 +270,25 @@ final class ImportBatchManager: ObservableObject {
         }
     }
 
-    /// Moves the finished app to ~/NXNative/Games and cleans up the import folder.
+    /// Moves the finished app to ~/NXNative/Games and, if opted in, cleans up the import folder.
     ///
     /// Safety rules:
+    ///  - Only the app the build announced in its `game` event is moved.
+    ///  - Source files are kept unless `trashSourcesAfterConversion` is on.
     ///  - Source files are only removed if ALL produced apps were moved successfully.
     ///  - An existing app with the same name is moved to the Trash, not deleted.
     ///  - The import folder is moved to the Trash (recoverable).
     private func moveResultAndCleanUp(game: ImportGameItem) {
         let fm = FileManager.default
-        let apps = ((try? fm.contentsOfDirectory(at: game.folderURL, includingPropertiesForKeys: nil)) ?? [])
-            .filter { $0.pathExtension == "app" }
+        let apps: [URL]
+        if let out = announcedOutput {
+            // Exactly the app this build wrote (the `game` event's `out`), not leftovers.
+            apps = fm.fileExists(atPath: out.path) ? [out] : []
+        } else {
+            // Older nxnative without the `game` event.
+            apps = ((try? fm.contentsOfDirectory(at: game.folderURL, includingPropertiesForKeys: nil)) ?? [])
+                .filter { $0.pathExtension == "app" }
+        }
 
         guard !apps.isEmpty else {
             appendLog(tr("⚠︎ Keine .app im Ordner gefunden – Quelldateien bleiben erhalten.",
@@ -281,6 +319,12 @@ final class ImportBatchManager: ObservableObject {
             appendLog(tr("Quelldateien bleiben erhalten, weil nicht alle Apps verschoben wurden.",
                          "Source files kept because not all apps could be moved."))
             conversionResults[game.name] = false
+            return
+        }
+
+        guard trashSourcesAfterConversion else {
+            appendLog(tr("Quelldateien bleiben im Import-Ordner: \(game.folderURL.lastPathComponent)",
+                         "Source files kept in Import folder: \(game.folderURL.lastPathComponent)"))
             return
         }
 
@@ -338,6 +382,11 @@ final class ImportBatchManager: ObservableObject {
         case let .say(message):
             appendLog(message)
 
+        case let .game(info):
+            announcedOutput = info.out.map {
+                URL(fileURLWithPath: $0, relativeTo: currentGameFolder).standardizedFileURL
+            }
+
         case .otherJSON:
             break
 
@@ -349,6 +398,23 @@ final class ImportBatchManager: ObservableObject {
     func appendLog(_ message: String) {
         logs.appendCapped(message)
         LiveLogWriter.shared.append(message)
+    }
+
+    /// Moves one import candidate (its folder or .nup file) to the Trash and rescans.
+    func moveToTrash(_ game: ImportGameItem) {
+        guard !isConverting else { return }
+        do {
+            try FileManager.default.trashItem(at: game.folderURL, resultingItemURL: nil)
+        } catch {
+            NSSound.beep()
+            appendLog(tr("⚠︎ Konnte nicht in den Papierkorb gelegt werden: \(error.localizedDescription)",
+                         "⚠︎ Could not move to Trash: \(error.localizedDescription)"))
+        }
+        scanImportFolder()
+    }
+
+    func revealInFinder(_ game: ImportGameItem) {
+        NSWorkspace.shared.activateFileViewerSelecting([game.folderURL])
     }
 
     func openImportFolderInFinder() {

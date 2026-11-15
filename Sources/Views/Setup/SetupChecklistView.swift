@@ -86,8 +86,10 @@ struct SetupChecklistView: View {
             checker.createVenv(prodKeysExists: prefs.prodKeysExists)
         case .installPythonPackages:
             checker.installPythonPackages(prodKeysExists: prefs.prodKeysExists)
-        case .installCommandLineTools:
-            checker.installCommandLineTools(prodKeysExists: prefs.prodKeysExists)
+        case .installMetalToolchain:
+            checker.installMetalToolchain(prodKeysExists: prefs.prodKeysExists)
+        case .installHomebrewTools:
+            checker.installHomebrewTools(prodKeysExists: prefs.prodKeysExists)
         }
     }
 }
@@ -158,7 +160,7 @@ struct SetupCheckRow: View {
             return check.status == .ok ? tr("Ändern …", "Change…") : tr("Ordner wählen …", "Choose Folder…")
         case .createVenv: return tr("venv erstellen", "Create venv")
         case .installPythonPackages: return tr("Installieren", "Install")
-        case .installCommandLineTools: return tr("Installieren …", "Install…")
+        case .installMetalToolchain, .installHomebrewTools: return tr("Installieren", "Install")
         case .chooseProdKeys: return tr("Auswählen …", "Choose…")
         }
     }
@@ -196,6 +198,7 @@ struct SetupSheet: View {
             HStack {
                 Spacer()
                 Button(checker.hasBlockingIssues ? tr("Später", "Later") : tr("Fertig", "Done")) {
+                    checker.acknowledgeCurrentIssues()
                     router.showingSetup = false
                 }
                 .keyboardShortcut(checker.hasBlockingIssues ? KeyboardShortcut.cancelAction : KeyboardShortcut.defaultAction)

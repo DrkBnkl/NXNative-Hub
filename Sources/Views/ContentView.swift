@@ -42,7 +42,7 @@ struct ContentView: View {
             // Show the setup sheet once per launch, only if something required is missing.
             if !setupChecker.hasRun {
                 setupChecker.run(prodKeysExists: prefs.prodKeysExists) {
-                    if setupChecker.hasBlockingIssues { router.showingSetup = true }
+                    if setupChecker.shouldPromptAtLaunch { router.showingSetup = true }
                 }
             }
             updater.checkForUpdates(silent: true)

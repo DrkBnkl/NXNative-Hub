@@ -33,8 +33,10 @@ final class AppPreferences: ObservableObject {
         let defaults = UserDefaults.standard
         prodKeysPath = defaults.string(forKey: Keys.prodKeys) ?? ""
         customRepoPath = defaults.string(forKey: NXPaths.customRepoPathKey) ?? ""
-        defaultGameLanguage = defaults.string(forKey: Keys.gameLanguage)
-            ?? (LanguageManager.shared.isGerman ? "de" : "en")
+        let savedLanguage = defaults.string(forKey: Keys.gameLanguage)
+            ?? (LanguageManager.shared.isGerman ? "de" : "en-US")
+        // 1.1 stored "en"; the build script's code for it is "en-US".
+        defaultGameLanguage = savedLanguage == "en" ? "en-US" : savedLanguage
     }
 
     var prodKeysExists: Bool {

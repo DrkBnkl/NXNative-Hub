@@ -12,7 +12,6 @@ enum NXPaths {
     static var gamesFolder: URL { URL(fileURLWithPath: "\(nxnativeRoot)/Games") }
     static var importFolder: URL { URL(fileURLWithPath: "\(nxnativeRoot)/Import") }
     static var liveLogPath: String { "\(nxnativeRoot)/build_live.log" }
-    static var dotnetRoot: String { "\(home)/.dotnet" }
 
     /// Configurations (env.txt) and saves per title ID
     static var appSupport: String { "\(home)/Library/Application Support/nxnative" }
@@ -46,31 +45,45 @@ enum NXPaths {
     static var pipPath: String { "\(venvPath)/bin/pip" }
     static var buildScriptPath: String { "\(repoPath)/scripts/build_ipa_from_nsp.py" }
     static var profileDirectory: String { "\(repoPath)/dm/games" }
-    static var nxExtractProject: String { "\(repoPath)/dm/tools/nx_extract" }
-    static var dotnetExecutable: String { "\(dotnetRoot)/dotnet" }
+    /// Metal compiler versions the shaders were tested with (`metal_macosx` etc.).
+    static var shaderChainLockPath: String { "\(repoPath)/dm/gfx/tools/dmsh_chain.lock" }
 
-    /// A Python package required by the build script.
+    /// A Python package required by the build script (check_prereqs in build_ipa_from_nsp.py).
     struct PythonRequirement {
-        let module: String   // import name
-        let package: String  // pip name
+        let name: String       // shown in the setup check
+        let modules: [String]  // import names; any one of them is enough
+        let package: String    // pip requirement
     }
 
+    /// The build script needs Python 3.12 or newer.
+    static let minimumPythonVersion = (major: 3, minor: 12)
+
     static let requiredPythonModules: [PythonRequirement] = [
-        PythonRequirement(module: "lz4", package: "lz4"),
-        PythonRequirement(module: "capstone", package: "capstone"),
-        PythonRequirement(module: "fontTools", package: "fonttools"),
-        PythonRequirement(module: "zstandard", package: "zstandard")
+        PythonRequirement(name: "lz4", modules: ["lz4.block"], package: "lz4"),
+        PythonRequirement(name: "capstone", modules: ["capstone"], package: "capstone>=5,<6"),
+        PythonRequirement(name: "fonttools", modules: ["fontTools"], package: "fonttools"),
+        PythonRequirement(name: "nsz", modules: ["nsz"], package: "nsz"),
+        PythonRequirement(name: "zbic", modules: ["zbic"], package: "zbic"),
+        // zstd is built into Python from 3.14 (compression.zstd); before that backports.zstd.
+        PythonRequirement(name: "zstd", modules: ["compression.zstd", "backports.zstd"],
+                          package: "backports.zstd; python_version < '3.14'")
     ]
 
     static func gameConfigDirectory(titleId: String) -> String { "\(appSupport)/\(titleId)" }
     static func envFilePath(titleId: String) -> String { "\(gameConfigDirectory(titleId: titleId))/env.txt" }
     static func saveDirectory(titleId: String) -> String { "\(gameConfigDirectory(titleId: titleId))/save" }
 
-    /// File extensions of Switch game files
-    static let gameFileExtensions: Set<String> = ["nsp", "xci", "nsz", "xcz"]
+    /// File extensions of encrypted Switch game packages (need prod.keys)
+    static let packageFileExtensions: Set<String> = ["nsp", "xci", "nsz", "xcz"]
+    /// All game file extensions, including the Switch 2 NUP container
+    static let gameFileExtensions: Set<String> = packageFileExtensions.union(["nup"])
 
     static func isGameFile(_ url: URL) -> Bool {
         gameFileExtensions.contains(url.pathExtension.lowercased())
+    }
+
+    static func isPackageFile(_ url: URL) -> Bool {
+        packageFileExtensions.contains(url.pathExtension.lowercased())
     }
 
     /// First existing path, otherwise the last candidate (used in error messages).
@@ -78,14 +91,12 @@ enum NXPaths {
         candidates.first { FileManager.default.fileExists(atPath: $0) } ?? (candidates.last ?? "")
     }
 
-    /// Environment for all tool invocations (Python, git, dotnet, pip).
-    /// GUI apps on macOS don't inherit the login PATH, so Homebrew and .dotnet are added.
+    /// Environment for all tool invocations (Python, git, pip, xcrun).
+    /// GUI apps on macOS don't inherit the login PATH, so the Homebrew folders are added.
     static func toolEnvironment() -> [String: String] {
         var env = ProcessInfo.processInfo.environment
-        let dirs = [dotnetRoot, "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"]
+        let dirs = ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"]
         env["PATH"] = (dirs + [env["PATH"]].compactMap { $0 }).joined(separator: ":")
-        env["DOTNET_ROOT"] = dotnetRoot
-        env["DOTNET_ROOT_ARM64"] = dotnetRoot
         env["PYTHONUNBUFFERED"] = "1"
         return env
     }

@@ -7,7 +7,7 @@ NXNative Hub is a SwiftUI app (macOS 14+) built with plain `swiftc`. It does not
 | Folder | Responsibility | Key types |
 |---|---|---|
 | `Sources/App` | Entry point, scenes, navigation, menu bar | `NXNativeHubApp`, `AppRouter`, `AppCommands`, `GameActions` |
-| `Sources/Core` | Infrastructure without UI | `NXPaths`, `CommandRunner`, `StreamingProcess`, `BuildEvent`, `LiveLogWriter`, `EnvFile`, `SwitchTitleID`, `tr()` |
+| `Sources/Core` | Infrastructure without UI | `NXPaths`, `CommandRunner`, `StreamingProcess`, `BuildEvent`, `LiveLogWriter`, `EnvFile`, `SwitchTitleID`, `NUPReader`, `DumpFolderReader`, `GameSourceKind`, `tr()` |
 | `Sources/Models` | Value types and compatibility logic | `InstalledGame`, `TargetPlatform`, `ProfileDatabase`, `GameMetaDetector` |
 | `Sources/Managers` | Business logic as `ObservableObject`s | `GameLibraryManager`, `BuildManager`, `ImportBatchManager`, `UpdateManager`, `ActiveBuildMonitor`, `GameSettingsModel`, `SetupChecker`, `AppPreferences` |
 | `Sources/Views` | SwiftUI views only | `ContentView`, `LibraryView`, `BuilderView`, `ImportView`, sheets, `SettingsView` |
@@ -36,9 +36,9 @@ A single `Window` is used on purpose: the app manages one build and import state
 | Tool | Called by | Via |
 |---|---|---|
 | `venv/bin/python3 scripts/build_ipa_from_nsp.py … --progress json` | `BuildManager`, `ImportBatchManager` | `StreamingProcess` (line-based, main-thread callbacks) |
-| `git`, `pip`, `dotnet` | `UpdateManager` | `CommandRunner` |
+| `git`, `pip` | `UpdateManager` | `CommandRunner` |
 | `ps` | `ActiveBuildMonitor` (every 2.5 s, also detects builds started in Terminal) | `CommandRunner` |
-| `xcode-select`, `python3 -m venv`, `pip` | `SetupChecker` | `CommandRunner` |
+| `xcode-select`, `xcodebuild`, `xcrun metal`, `which`, `brew`, `python3 -m venv`, `pip` | `SetupChecker` | `CommandRunner` |
 | `ditto` | `SaveGameImporter` (zip extraction) | `CommandRunner` |
 
 Executables are always started with argument arrays, never through a shell. The build script reports progress as JSON lines, parsed by `BuildEvent`.
@@ -50,7 +50,9 @@ Executables are always started with argument arrays, never through a shell. The 
 | `NXPaths.repoPath` (default `~/NXNative/nxnative`) | nxnative repo, venv, profiles | user / `UpdateManager` |
 | `~/NXNative/Games`, `~/NXNative/Import` | converted games, import queue | `GameLibraryManager`, `ImportBatchManager` |
 | `~/NXNative/build_live.log` | log of the current build | `LiveLogWriter` |
-| `~/Library/Application Support/nxnative/<TitleID>/env.txt` | per-game settings | `GameSettingsModel` via `EnvFile` |
+| `<game>.app/Contents/Resources/dm/launcher.json` | the settings a game offers (read only) | `LauncherSettingsFile` |
+| preferences domain `<bundle ID>`, keys `launcher.<ENV>` | per-game settings (only values that differ from the tested default) | `GameSettingsModel` via `SavedChoices` |
+| `~/Library/Application Support/nxnative/<TitleID>/env.txt` | player overrides; shown as fixed. Hub 1.1 files are migrated once (`LegacyEnvMigration`, backup `env.txt.hub-1.1.bak`) | `GameSettingsSnapshot` via `EnvFile` |
 | `…/<TitleID>/save`, `save_backup_<timestamp>` | saves and backups | `SaveGameImporter` |
 | UserDefaults | prod.keys path, nxnative folder, languages, library folders, size cache | `AppPreferences`, `LanguageManager`, `GameLibraryManager` |
 

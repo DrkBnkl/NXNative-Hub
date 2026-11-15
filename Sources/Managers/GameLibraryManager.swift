@@ -140,8 +140,10 @@ final class GameLibraryManager: ObservableObject {
             let size = folderSize(url: resolved, cache: &sizeCache)
             usedCacheKeys.insert(resolved.path)
 
-            // Current game settings for the badges
-            let env = EnvFile.load(path: NXPaths.envFilePath(titleId: info.titleId))?.values ?? [:]
+            // Move settings Hub 1.1 wrote into env.txt to the game's saved choices (once).
+            LegacyEnvMigration.migrateIfNeeded(info: info)
+            // What the game uses at the next start, for the badges
+            let env = GameSettingsSnapshot(info: info).values
 
             result.append(InstalledGame(
                 id: info.titleId,
@@ -150,9 +152,9 @@ final class GameLibraryManager: ObservableObject {
                 version: info.version,
                 path: resolved.path,
                 sizeFormatted: ByteCountFormatter.string(fromByteCount: size, countStyle: .file),
-                fpsTarget: env["DM_FPS_TARGET"] ?? "60",
-                isDocked: (env["DM_OPMODE"] ?? "1") == "1",
-                upscaling: env["DM_PRESENT_UPSCALE"] ?? "metalfx",
+                fpsTarget: env["DM_FPS_TARGET"],
+                isDocked: env["DM_OPMODE"].map { $0 == "1" },
+                upscaling: env["DM_PRESENT_UPSCALE"] ?? "off",
                 isFullscreen: env["DM_FULLSCREEN"] == "1",
                 language: env["DM_LANG"] ?? ""
             ))

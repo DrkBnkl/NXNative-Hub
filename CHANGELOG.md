@@ -5,6 +5,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.1.0] – 2026-11-15
+
 ### Added
 - Switch 2 games: build from a `.nup` file or a dump folder (`base/`, `updates/`, `dlc/`) in the builder and the batch import, without prod.keys; a dropped `.nup` file is built itself, and dumps without `base/` are recognized.
 - Switch 2 games as NSP/XCI are recognized and marked as not buildable yet, with a hint to use a `.nup` file or dump folder.

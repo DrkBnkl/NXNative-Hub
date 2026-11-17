@@ -61,6 +61,7 @@ This checklist outlines the manual test matrix to verify application stability, 
 - [ ] **Status Inspector**: Clicking a status badge opens the detailed breakdown showing upstream engine commit differences, shader chains, shader status, and profile revisions.
 - [ ] **Direct Update**: Status inspector and game rows directly offer "App jetzt aktualisieren" / "Jetzt neu kompilieren", which automatically resolves the game's source/build directory and starts the build with live progress.
 - [ ] **Filter Integration**: The library filter allows filtering titles specifically by App Updates, Recompilation, or All Updates.
+- [ ] **Storage Reclamation in Status Sheet**: Displays the exact size of any existing intermediate `<titleID>_build` directory and allows safely moving it to the system Trash with one click while retaining the permanent source `.nsp`.
 
 ---
 
@@ -69,6 +70,7 @@ This checklist outlines the manual test matrix to verify application stability, 
 - [ ] **File Inspection**: Selecting or dropping a folder populates the detected files, Title ID, estimated build size, and free disk space.
 - [ ] **Incremental Build Detection**: If an existing `<titleID>_build` directory exists, the app displays the accelerated rebuild indicator.
 - [ ] **Execution**: Starting a build (`⌘R`) displays live stage progress, percentage, and streaming log lines.
+- [ ] **Post-Build Storage Cleanup**: Upon successful build completion, both the Builder view and Live Log sheet present a cleanup banner displaying the exact size of `<titleID>_build` with a one-click option to move it to the macOS Trash.
 - [ ] **Cancellation**: Clicking **Cancel** halts child processes cleanly without leaving zombie build tasks.
 - [ ] **Error Handling**: Build failures extract the relevant diagnostic error line and offer **Open Build Logs**.
 

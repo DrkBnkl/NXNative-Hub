@@ -16,6 +16,7 @@ The interface is fully localized in **English** and **German**.
 
 ### 🎮 Centralized Game Library
 - **Catalog & Overview**: View all converted titles with application version, file size, build details, and active runtime configuration.
+- **Smart Filtering**: Filter by favorites or directly target titles with pending updates using dedicated status tabs (**All**, **Updates**, **App Updates**, **Recompile**, **Favorites**).
 - **Instant Launch**: Double-click or press `⌘↩` to launch titles immediately.
 - **Direct Launch Option**: Skip the internal settings window at launch (`--no-launcher` / `DM_LAUNCHER=0`) with global and per-game toggles, while retaining optional Option-key (`⌥`) invocation.
 - **Save Management**: Import game saves from JKSV, Checkpoint, or Ryujinx with automated timestamped backups.
@@ -25,6 +26,7 @@ The interface is fully localized in **English** and **German**.
 - **Switch 2 Sources**: Build Switch 2 games from a `.nup` file or a dump folder (`base/`, `updates/`, `dlc/`) without `prod.keys`.
 - **Batch Import**: Automatically queue and process multiple titles placed in `~/NXNative/Import` with pre-flight game profile verification.
 - **Smart Rebuild Detection**: Detects existing build artifacts (`<titleID>_build`) to accelerate subsequent compilations and warns about insufficient storage.
+- **Disk Space Cleanup**: Prominently displays disk space consumed by intermediate `<titleID>_build` directories (which can reach 10 GB to 100+ GB) post-build and in the status inspector, offering one-click safe moving to the macOS Trash while keeping permanent `.nsp` archives intact.
 - **Safety First**: Source files stay in the Import folder by default; optionally they are moved to the system Trash after a successful conversion, never permanently deleted.
 
 ### ⚙️ Deep Configuration Engine
@@ -122,7 +124,8 @@ cd NXNative-Hub
 |---|---|
 | `~/NXNative/nxnative` | Upstream nxnative repository and virtual environment |
 | `~/NXNative/Games` | Installed, playable native macOS applications |
-| `~/NXNative/Import` | Target folder for batch compilation |
+| `~/NXNative/Import` | Target folder for batch compilation and retained source archives |
+| `<SourceDir>/<TitleID>_build/` | Intermediate build cache & extracted assets (can be trashed to free space) |
 | `~/Library/Application Support/nxnative/<TitleID>/` | Game configuration (`env.txt`) and save game data |
 | `~/Library/Logs/nxnative/<TitleID>.log` | Runtime log generated during the most recent execution |
 | `~/NXNative/Reports` | Generated issue diagnostics and bug report archives |

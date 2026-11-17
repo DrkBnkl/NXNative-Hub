@@ -5,6 +5,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.2.2] – 2026-11-17
+
+### Changed
+- **Redesigned Single Game Builder ("Spiel bauen")**:
+  - Removed duplicate and cluttered batch import list from the single game builder, replacing it with an unobtrusive, one-line banner pointing to Batch Import when pending games exist.
+  - Replaced redundant separate path textfield and drop box with a unified drag-and-drop & browse card that converts into an informative Game Card once a source is selected.
+  - Removed persistent `prod.keys` section when keys are already configured; replaced with a context-sensitive missing keys warning only when keys are required and missing.
+  - Moved target platform selector (`macApp` vs `macDev`) into collapsible Advanced Options.
+  - Added a prominent primary **"Spiel jetzt bauen (⌘R)"** button directly on the page with clear validation feedback.
+
 ## [1.2.1] – 2026-11-17
 
 ### Added

@@ -5,6 +5,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.4.1] – 2026-11-17
+
+### Fixed
+- **NUP File Selection for Recompilation & Builder**:
+  - Replaced directory-only file picker with `FilePanels.chooseGameSource`, allowing direct selection of `.nup` container files as well as game folders in both the recompilation prompt and the Builder interface.
+  - Automatic source location now searches for loose `.nup` files in `~/NXNative/Import` and beside installed `.app` bundles.
+  - Resolved `_build` folder discovery and log access when working with `.nup` container files directly.
+  - Improved `GameMetaDetector.detect` to read metadata directly from `.nup` file paths.
+
 ## [1.4.0] – 2026-11-17
 
 ### Added

@@ -324,7 +324,7 @@ struct GameStatusSheet: View {
 
     private func openInBuilder() {
         if let source = GameSourceLocator.findSourceDirectory(for: game) {
-            builderForm.gameDirectory = source
+            builderForm.setSource(from: URL(fileURLWithPath: source))
         }
         router.statusTargetGame = nil
         router.selection = .builder

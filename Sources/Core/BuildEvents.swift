@@ -271,7 +271,9 @@ struct BuildFailureTracker {
 enum BuildWorkFolder {
     /// `<title ID>_build` folders in a game folder. nxnative reuses them, so a rebuild is much faster.
     static func find(in gameDirectory: String) -> [URL] {
-        let url = URL(fileURLWithPath: gameDirectory)
+        var isDir: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: gameDirectory, isDirectory: &isDir) else { return [] }
+        let url = isDir.boolValue ? URL(fileURLWithPath: gameDirectory) : URL(fileURLWithPath: gameDirectory).deletingLastPathComponent()
         let items = (try? FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: [.isDirectoryKey])) ?? []
         return items.filter { item in
             let name = item.lastPathComponent

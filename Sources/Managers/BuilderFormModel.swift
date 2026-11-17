@@ -72,10 +72,11 @@ final class BuilderFormModel: ObservableObject {
     func setSource(from url: URL) {
         var isDir: ObjCBool = false
         guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir) else { return }
-        if isDir.boolValue || Self.isNUPFile(url) {
-            gameDirectory = url.path
+        let newDir = (isDir.boolValue || Self.isNUPFile(url)) ? url.path : url.deletingLastPathComponent().path
+        if gameDirectory == newDir {
+            scanGameFolder()
         } else {
-            gameDirectory = url.deletingLastPathComponent().path
+            gameDirectory = newDir
         }
     }
 

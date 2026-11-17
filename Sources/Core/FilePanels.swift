@@ -25,6 +25,17 @@ enum FilePanels {
         return panel.runModal() == .OK ? panel.urls : []
     }
 
+    /// Chooses a game folder (containing .nsp, .xci, or a Switch 2 dump) or a container file (.nup).
+    static func chooseGameSource(prompt: String = tr("Auswählen", "Choose"), message: String? = nil) -> URL? {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.prompt = prompt
+        if let message = message { panel.message = message }
+        return panel.runModal() == .OK ? panel.url : nil
+    }
+
     static func chooseKeysFile() -> URL? {
         let panel = NSOpenPanel()
         panel.canChooseFiles = true

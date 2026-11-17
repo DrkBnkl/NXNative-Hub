@@ -159,6 +159,14 @@ enum GameMetaDetector {
 
     static func detect(in folderURL: URL) -> DetectedGameMeta {
         let fm = FileManager.default
+        var isDir: ObjCBool = false
+        if fm.fileExists(atPath: folderURL.path, isDirectory: &isDir), !isDir.boolValue {
+            if folderURL.pathExtension.lowercased() == "nup", NUPReader.isNUP(folderURL) {
+                return switch2Meta(NUPReader.read(folderURL), gameFiles: [folderURL], source: .nup(folderURL))
+            }
+            return DetectedGameMeta(titleId: nil, baseTitleId: nil, detectedVersions: [], gameFiles: [], source: .none)
+        }
+
         guard let files = try? fm.contentsOfDirectory(at: folderURL, includingPropertiesForKeys: nil) else {
             return DetectedGameMeta(titleId: nil, baseTitleId: nil, detectedVersions: [], gameFiles: [], source: .none)
         }

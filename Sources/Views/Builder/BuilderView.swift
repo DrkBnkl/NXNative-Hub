@@ -145,9 +145,9 @@ struct BuilderView: View {
                     .foregroundStyle(.secondary)
             }
 
-            Button(tr("Ordner auswählen …", "Choose Folder…")) {
-                if let url = FilePanels.chooseFolders(multiple: false, prompt: tr("Auswählen", "Choose")).first {
-                    form.gameDirectory = url.path
+            Button(tr("Ordner oder .nup auswählen …", "Choose Folder or .nup…")) {
+                if let url = FilePanels.chooseGameSource(prompt: tr("Auswählen", "Choose")) {
+                    form.setSource(from: url)
                 }
             }
             .buttonStyle(.bordered)
@@ -194,8 +194,8 @@ struct BuilderView: View {
                 Spacer()
 
                 Button(tr("Ändern …", "Change…")) {
-                    if let url = FilePanels.chooseFolders(multiple: false, prompt: tr("Ändern", "Change")).first {
-                        form.gameDirectory = url.path
+                    if let url = FilePanels.chooseGameSource(prompt: tr("Ändern", "Change")) {
+                        form.setSource(from: url)
                     }
                 }
                 .controlSize(.small)

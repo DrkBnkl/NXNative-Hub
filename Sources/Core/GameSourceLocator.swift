@@ -21,6 +21,9 @@ enum GameSourceLocator {
                let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
                let sources = json["sources"] as? [String: Any] {
                 for (srcPath, _) in sources {
+                    if fm.fileExists(atPath: srcPath) {
+                        return srcPath
+                    }
                     for searchTid in [tid, baseTid] {
                         let buildFolderMarker = "/\(searchTid)_build"
                         if let range = srcPath.range(of: buildFolderMarker) {
@@ -57,6 +60,14 @@ enum GameSourceLocator {
         if fm.fileExists(atPath: parentBuild1.path) || fm.fileExists(atPath: parentBuild2.path) {
             return parent.path
         }
+        if let siblings = try? fm.contentsOfDirectory(at: parent, includingPropertiesForKeys: nil) {
+            for item in siblings where item.pathExtension.lowercased() == "nup" && NUPReader.isNUP(item) {
+                let meta = GameMetaDetector.detect(in: item)
+                if meta.titleId == tid || meta.baseTitleId == tid || meta.titleId == baseTid || meta.baseTitleId == baseTid {
+                    return item.path
+                }
+            }
+        }
 
         return nil
     }
@@ -64,11 +75,14 @@ enum GameSourceLocator {
     /// Finds the <titleId>_build folder for an installed game, if it exists.
     static func findBuildFolder(for game: InstalledGame) -> URL? {
         guard let sourceDir = findSourceDirectory(for: game) else { return nil }
+        var isDir: ObjCBool = false
+        let isFile = FileManager.default.fileExists(atPath: sourceDir, isDirectory: &isDir) && !isDir.boolValue
+        let baseDirURL = isFile ? URL(fileURLWithPath: sourceDir).deletingLastPathComponent() : URL(fileURLWithPath: sourceDir)
         let tid = game.titleId
         let baseTid = SwitchTitleID.baseID(of: tid) ?? tid
         let candidates = [
-            URL(fileURLWithPath: sourceDir).appendingPathComponent("\(tid)_build"),
-            URL(fileURLWithPath: sourceDir).appendingPathComponent("\(baseTid)_build")
+            baseDirURL.appendingPathComponent("\(tid)_build"),
+            baseDirURL.appendingPathComponent("\(baseTid)_build")
         ]
         return candidates.first { FileManager.default.fileExists(atPath: $0.path) }
     }
@@ -109,14 +123,13 @@ enum GameUpdateAction {
                 library: library
             )
         } else {
-            // Prompt user to pick the folder holding the NSPs or <titleId>_build
-            let chosen = FilePanels.chooseFolders(
-                multiple: false,
+            // Prompt user to pick the folder holding the NSPs or <titleId>_build, or a .nup file
+            let chosen = FilePanels.chooseGameSource(
                 prompt: tr("Auswählen", "Choose"),
-                message: tr("Wähle den Ordner mit den Quelldateien (.nsp) oder dem Build-Ordner (\(game.titleId)_build).",
-                            "Choose the folder containing the source files (.nsp) or the build folder (\(game.titleId)_build).")
+                message: tr("Wähle den Ordner mit den Quelldateien (.nsp / .xci), eine .nup-Datei oder den Build-Ordner (\(game.titleId)_build).",
+                            "Choose the folder containing the source files (.nsp / .xci), a .nup file or the build folder (\(game.titleId)_build).")
             )
-            if let selected = chosen.first?.path {
+            if let selected = chosen?.path {
                 startDirectBuild(
                     sourceDir: selected,
                     game: game,
@@ -147,14 +160,17 @@ enum GameUpdateAction {
         library: GameLibraryManager
     ) {
         let targetAppPath = game.path
-        builderForm.gameDirectory = sourceDir
+        builderForm.setSource(from: URL(fileURLWithPath: sourceDir))
         builderForm.platform = .macApp
         builderForm.language = game.language.isEmpty ? prefs.defaultGameLanguage : game.language
         builderForm.appName = game.name
         builderForm.keepExtracted = true
 
         router.statusTargetGame = nil
-        guard builderForm.canStart(manager: buildManager, monitor: buildMonitor, prefs: prefs) else { return }
+        guard builderForm.canStart(manager: buildManager, monitor: buildMonitor, prefs: prefs) else {
+            router.selection = .builder
+            return
+        }
 
         let options = builderForm.makeOptions(prefs: prefs)
         buildManager.startBuild(options: options) {

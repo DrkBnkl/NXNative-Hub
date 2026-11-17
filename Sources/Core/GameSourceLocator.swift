@@ -146,6 +146,7 @@ enum GameUpdateAction {
         prefs: AppPreferences,
         library: GameLibraryManager
     ) {
+        let targetAppPath = game.path
         builderForm.gameDirectory = sourceDir
         builderForm.platform = .macApp
         builderForm.language = game.language.isEmpty ? prefs.defaultGameLanguage : game.language
@@ -153,7 +154,33 @@ enum GameUpdateAction {
         builderForm.keepExtracted = true
 
         router.statusTargetGame = nil
-        builderForm.startBuild(manager: buildManager, monitor: buildMonitor, prefs: prefs, library: library)
+        guard builderForm.canStart(manager: buildManager, monitor: buildMonitor, prefs: prefs) else { return }
+
+        let options = builderForm.makeOptions(prefs: prefs)
+        buildManager.startBuild(options: options) {
+            if buildManager.buildSucceeded, let newAppPath = buildManager.createdArtifactPath {
+                let fm = FileManager.default
+                let newURL = URL(fileURLWithPath: newAppPath).standardizedFileURL
+                let targetURL = URL(fileURLWithPath: targetAppPath).standardizedFileURL
+                if newURL.path != targetURL.path && fm.fileExists(atPath: newURL.path) {
+                    do {
+                        if fm.fileExists(atPath: targetURL.path) {
+                            try fm.trashItem(at: targetURL, resultingItemURL: nil)
+                        }
+                        try fm.moveItem(at: newURL, to: targetURL)
+                        buildManager.appendLog(tr("App in Bibliothek aktualisiert: \(targetURL.lastPathComponent)",
+                                                  "Updated app in library: \(targetURL.lastPathComponent)"))
+                    } catch {
+                        buildManager.appendLog(tr("⚠︎ App konnte nicht in die Bibliothek verschoben werden: \(error.localizedDescription)",
+                                                  "⚠︎ Could not update app in library: \(error.localizedDescription)"))
+                    }
+                }
+            }
+            library.refreshLibrary()
+            buildMonitor.checkActiveBuild()
+            builderForm.scanGameFolder()
+        }
+        buildMonitor.checkActiveBuild()
         router.showingLiveLog = true
     }
 }

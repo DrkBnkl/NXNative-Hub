@@ -26,6 +26,7 @@ struct LibraryView: View {
     @EnvironmentObject private var library: GameLibraryManager
     @EnvironmentObject private var router: AppRouter
     @EnvironmentObject private var gameSettings: GameSettingsModel
+    @EnvironmentObject private var prefs: AppPreferences
     @State private var searchText = ""
     @State private var isDropTargeted = false
     @State private var filter: LibraryFilter = .all
@@ -101,28 +102,71 @@ struct LibraryView: View {
                 emptyState
             }
         } else {
-            List(selection: $router.selectedGameID) {
-                ForEach(filteredGames) { game in
-                    GameRowView(game: game,
-                                onPlay: { GameActions.launch(game) },
-                                onSettings: { openSettings(game) },
-                                onShowStatus: { router.statusTargetGame = game })
+            ZStack {
+                if prefs.libraryViewMode == .list {
+                    listView
+                } else {
+                    gridView
                 }
-            }
-            .listStyle(.inset)
-            .contextMenu(forSelectionType: InstalledGame.ID.self) { ids in
-                if let game = findGame(for: ids) {
-                    gameMenuItems(for: game)
-                }
-            } primaryAction: { ids in
-                // Double-click / Return launches the game (standard macOS list behavior)
-                if let game = findGame(for: ids) { GameActions.launch(game) }
             }
             .overlay {
                 if filteredGames.isEmpty && !searchText.isEmpty {
                     ContentUnavailableView.search(text: searchText)
                 }
             }
+        }
+    }
+
+    private var listView: some View {
+        List(selection: $router.selectedGameID) {
+            ForEach(filteredGames) { game in
+                GameRowView(game: game,
+                            onPlay: { GameActions.launch(game) },
+                            onSettings: { openSettings(game) },
+                            onShowStatus: { router.statusTargetGame = game })
+            }
+        }
+        .listStyle(.inset)
+        .contextMenu(forSelectionType: InstalledGame.ID.self) { ids in
+            if let game = findGame(for: ids) {
+                gameMenuItems(for: game)
+            }
+        } primaryAction: { ids in
+            // Double-click / Return launches the game (standard macOS list behavior)
+            if let game = findGame(for: ids) { GameActions.launch(game) }
+        }
+    }
+
+    private var gridView: some View {
+        ScrollView {
+            LazyVGrid(
+                columns: [GridItem(.adaptive(minimum: prefs.coverSize.width, maximum: prefs.coverSize.width + 45), spacing: 20)],
+                spacing: 24
+            ) {
+                ForEach(filteredGames) { game in
+                    GameCoverCardView(
+                        game: game,
+                        isSelected: router.selectedGameID == game.id,
+                        coverWidth: prefs.coverSize.width,
+                        onPlay: { GameActions.launch(game) },
+                        onSettings: { openSettings(game) },
+                        onShowStatus: { router.statusTargetGame = game }
+                    )
+                    .contentShape(RoundedRectangle(cornerRadius: 18))
+                    .onTapGesture {
+                        router.selectedGameID = game.id
+                    }
+                    .simultaneousGesture(
+                        TapGesture(count: 2).onEnded {
+                            GameActions.launch(game)
+                        }
+                    )
+                    .contextMenu {
+                        gameMenuItems(for: game)
+                    }
+                }
+            }
+            .padding(20)
         }
     }
 
@@ -146,6 +190,28 @@ struct LibraryView: View {
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         ToolbarItemGroup(placement: .primaryAction) {
+            // View Mode Switcher (List vs. Cover Grid)
+            Picker(tr("Darstellung", "View Mode"), selection: $prefs.libraryViewMode) {
+                Label(tr("Cover", "Cover"), systemImage: "square.grid.2x2").tag(LibraryViewMode.grid)
+                Label(tr("Liste", "List"), systemImage: "list.bullet").tag(LibraryViewMode.list)
+            }
+            .pickerStyle(.segmented)
+            .help(tr("Zwischen Cover- und Listenansicht wechseln", "Switch between cover and list view"))
+
+            // Cover size menu when in grid mode
+            if prefs.libraryViewMode == .grid {
+                Menu {
+                    Picker(tr("Cover-Größe", "Cover Size"), selection: $prefs.coverSize) {
+                        ForEach(CoverSize.allCases) { size in
+                            Text(size.title).tag(size)
+                        }
+                    }
+                } label: {
+                    Label(tr("Größe", "Size"), systemImage: "arrow.up.left.and.arrow.down.right")
+                }
+                .help(tr("Größe der Cover anpassen", "Adjust cover card size"))
+            }
+
             if library.updateAvailableCount > 0 {
                 Picker(tr("Filter", "Filter"), selection: $filter) {
                     ForEach(LibraryFilter.allCases) { item in

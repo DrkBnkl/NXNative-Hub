@@ -15,6 +15,7 @@ The interface is fully localized in **English** and **German**.
 ## Key Features
 
 ### 🎮 Centralized Game Library
+- **Cover Grid & List Views**: Switch seamlessly between a detailed List view and a rich Cover Grid view with customizable artwork sizes (Small, Medium, Large), hover controls, and status badges.
 - **Catalog & Overview**: View all converted titles with application version, file size, build details, and active runtime configuration.
 - **Smart Filtering**: Filter by favorites or directly target titles with pending updates using dedicated status tabs (**All**, **Updates**, **App Updates**, **Recompile**, **Favorites**).
 - **Instant Launch**: Double-click or press `⌘↩` to launch titles immediately.

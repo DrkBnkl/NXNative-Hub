@@ -5,6 +5,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.3.0] – 2026-11-17
+
+### Added
+- **Large Cover Grid View for "My Games" (`LibraryView`)**:
+  - Seamless toggle in the toolbar between traditional List View and rich Cover Grid View (`GameCoverCardView`).
+  - High-resolution artwork loading directly from app bundles (`cover.jpg`, `cover.png`, or full 1024×1024 `AppIcon.icns`).
+  - Interactive hover actions: instant Play button overlay, Settings shortcut, and update badges directly on the cover.
+  - Three customizable cover sizes: Small (130 px), Medium (175 px), and Large (230 px).
+  - Context menu and double-click to launch fully preserved in Grid View.
+
 ## [1.2.2] – 2026-11-17
 
 ### Changed

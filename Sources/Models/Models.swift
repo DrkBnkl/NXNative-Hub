@@ -115,7 +115,19 @@ struct InstalledGame: Identifiable, Hashable {
     var previousLogPath: String { NXPaths.previousGameLogPath(titleId: titleId) }
 
     var icon: NSImage {
-        NSWorkspace.shared.icon(forFile: path)
+        let appURL = URL(fileURLWithPath: path)
+        let resURL = appURL.appendingPathComponent("Contents/Resources")
+        for candidate in ["cover.jpg", "cover.png", "icon.jpg", "icon.png"] {
+            let file = resURL.appendingPathComponent(candidate)
+            if let img = NSImage(contentsOfFile: file.path) {
+                return img
+            }
+        }
+        let icns = resURL.appendingPathComponent("AppIcon.icns")
+        if let img = NSImage(contentsOfFile: icns.path) {
+            return img
+        }
+        return NSWorkspace.shared.icon(forFile: path)
     }
 }
 

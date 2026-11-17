@@ -5,6 +5,51 @@ import Foundation
 // Shared by the builder, the import and the Settings window. The UserDefaults keys
 // are unchanged from 1.0, so existing settings are kept.
 
+enum LibraryViewMode: String, CaseIterable, Identifiable {
+    case list
+    case grid
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .list: return tr("Listenansicht", "List View")
+        case .grid: return tr("Coveransicht", "Cover Grid")
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .list: return "list.bullet"
+        case .grid: return "square.grid.2x2"
+        }
+    }
+}
+
+enum CoverSize: String, CaseIterable, Identifiable {
+    case small
+    case medium
+    case large
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .small: return tr("Klein", "Small")
+        case .medium: return tr("Mittel", "Medium")
+        case .large: return tr("Groß", "Large")
+        }
+    }
+
+    var width: CGFloat {
+        switch self {
+        case .small: return 130
+        case .medium: return 175
+        case .large: return 230
+        }
+    }
+}
+
 final class AppPreferences: ObservableObject {
     static let shared = AppPreferences()
 
@@ -13,6 +58,8 @@ final class AppPreferences: ObservableObject {
         static let gameLanguage = "defaultGameLanguage"
         static let notifyBuilds = Notifier.enabledKey
         static let skipGameLauncher = "skipGameLauncher"
+        static let libraryViewMode = "libraryViewMode"
+        static let coverSize = "libraryCoverSize"
     }
 
     @Published var prodKeysPath: String {
@@ -41,6 +88,16 @@ final class AppPreferences: ObservableObject {
         didSet { UserDefaults.standard.set(skipGameLauncher, forKey: Keys.skipGameLauncher) }
     }
 
+    /// Layout mode for "My Games" library: list or grid of large covers.
+    @Published var libraryViewMode: LibraryViewMode {
+        didSet { UserDefaults.standard.set(libraryViewMode.rawValue, forKey: Keys.libraryViewMode) }
+    }
+
+    /// Size of covers in grid view (small, medium, large).
+    @Published var coverSize: CoverSize {
+        didSet { UserDefaults.standard.set(coverSize.rawValue, forKey: Keys.coverSize) }
+    }
+
     init() {
         let defaults = UserDefaults.standard
         notifyWhenBuildsFinish = defaults.object(forKey: Keys.notifyBuilds) as? Bool ?? true
@@ -51,6 +108,14 @@ final class AppPreferences: ObservableObject {
             ?? (LanguageManager.shared.isGerman ? "de" : "en-US")
         // 1.1 stored "en"; the build script's code for it is "en-US".
         defaultGameLanguage = savedLanguage == "en" ? "en-US" : savedLanguage
+
+        let savedViewMode = defaults.string(forKey: Keys.libraryViewMode)
+            .flatMap(LibraryViewMode.init(rawValue:)) ?? .grid
+        libraryViewMode = savedViewMode
+
+        let savedCoverSize = defaults.string(forKey: Keys.coverSize)
+            .flatMap(CoverSize.init(rawValue:)) ?? .medium
+        coverSize = savedCoverSize
     }
 
     var prodKeysExists: Bool {

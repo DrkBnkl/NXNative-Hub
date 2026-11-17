@@ -63,44 +63,48 @@ struct GameCoverCardView: View {
                 }
 
                 // Top Badges
-                HStack {
+                HStack(alignment: .top) {
                     if SwitchTitleID.isSwitch2(game.titleId) {
                         BadgeView(text: "Switch 2", color: .red)
-                            .padding(8)
+                            .background(.ultraThinMaterial, in: Capsule())
+                            .shadow(color: .black.opacity(0.35), radius: 3, y: 1)
                     }
-                    Spacer()
+                    Spacer(minLength: 4)
                     if let badge = game.updateStatus.badge {
                         Button(action: onShowStatus) {
                             BadgeView(text: badge.text, systemImage: badge.icon, color: badge.color)
+                                .background(.ultraThinMaterial, in: Capsule())
+                                .shadow(color: .black.opacity(0.35), radius: 3, y: 1)
                         }
                         .buttonStyle(.plain)
                         .help(game.updateStatus.tooltip)
-                        .padding(8)
                     }
                 }
+                .padding(6)
             }
             .frame(width: coverWidth, height: coverWidth)
 
-            // Title and Metadata
-            VStack(spacing: 3) {
+            // Title and Metadata with fixed row heights for uniform horizontal alignment
+            VStack(spacing: 4) {
                 Text(game.name)
                     .font(.callout.weight(.semibold))
                     .lineLimit(2)
                     .multilineTextAlignment(.center)
-                    .frame(width: coverWidth)
+                    .frame(width: coverWidth, height: 38, alignment: .top)
 
                 Text("v\(game.version) · \(game.sizeFormatted)")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+                    .frame(width: coverWidth, height: 14)
 
-                // Quick tags
+                // Quick tags (fixed height so all cards align horizontally)
                 HStack(spacing: 4) {
                     if !game.fpsTarget.isEmpty {
                         Text("\(game.fpsTarget) FPS")
                             .font(.system(size: 9, weight: .semibold))
                             .padding(.horizontal, 4)
-                            .padding(.vertical, 1)
+                            .padding(.vertical, 1.5)
                             .background(Color.blue.opacity(0.12))
                             .foregroundStyle(.blue)
                             .clipShape(Capsule())
@@ -108,7 +112,7 @@ struct GameCoverCardView: View {
                     Text(game.isDocked ? "Docked" : "Handheld")
                         .font(.system(size: 9, weight: .semibold))
                         .padding(.horizontal, 4)
-                        .padding(.vertical, 1)
+                        .padding(.vertical, 1.5)
                         .background(Color.purple.opacity(0.12))
                         .foregroundStyle(.purple)
                         .clipShape(Capsule())
@@ -116,12 +120,13 @@ struct GameCoverCardView: View {
                         Text("MetalFX")
                             .font(.system(size: 9, weight: .semibold))
                             .padding(.horizontal, 4)
-                            .padding(.vertical, 1)
+                            .padding(.vertical, 1.5)
                             .background(Color.orange.opacity(0.12))
                             .foregroundStyle(.orange)
                             .clipShape(Capsule())
                     }
                 }
+                .frame(width: coverWidth, height: 18)
             }
             .frame(width: coverWidth)
         }

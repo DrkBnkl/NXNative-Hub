@@ -5,6 +5,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.3.1] – 2026-11-17
+
+### Fixed
+- **Cover Grid Alignment**: Fixed vertical misalignment across cards by establishing uniform fixed-height rows for game titles (top-aligned 2-line box), version/size metadata, and configuration badge tags.
+- **Cover Overlay Badges**: Enhanced readability of "Switch 2" and update badges over game cover art with an ultra-thin frosted glass pill background and drop shadow.
+
 ## [1.3.0] – 2026-11-17
 
 ### Added

@@ -75,6 +75,119 @@ struct LauncherSetting: Decodable, Identifiable, Equatable {
         (options ?? []).compactMap { $0.count >= 2 ? Choice(value: $0[0], label: $0[1]) : nil }
     }
 
+    /// User-friendly, localized label for known nxnative environment settings.
+    var localizedLabel: String {
+        switch env {
+        case "DM_PRESENT_UPSCALE":
+            return tr("Fenster-Hochskalierung (Präsentation)", "Window Upscaling (Presentation)")
+        case "DM_UPSCALER":
+            return tr("Spiel-interner Upscaler", "Game's Internal Upscaler")
+        case "DM_FPS_TARGET":
+            return tr("Bildwiederholrate (FPS)", "Frame Rate (FPS)")
+        case "DM_DYNAMIC_RESOLUTION":
+            return tr("Dynamische Auflösung", "Dynamic Resolution")
+        case "DM_RENDER_SCALE":
+            return tr("Render-Skalierung", "Render Scale")
+        case "DM_OPMODE":
+            return tr("Konsolenmodus", "Console Mode")
+        case "DM_LANG":
+            return tr("Spielsprache", "Game Language")
+        case "DM_FULLSCREEN":
+            return tr("Anzeigemodus", "Display Mode")
+        case "DM_PICTURE_FIT":
+            return tr("Bildanpassung", "Picture Fit")
+        case "DM_SHOW_FPS":
+            return tr("FPS-Anzeige", "Frame-rate Counter")
+        case "DM_TOUCH_HAPTICS":
+            return tr("Touch-Feedback", "Touch Feedback")
+        case "DM_RUMBLE":
+            return tr("Controller-Vibration", "Game Rumble")
+        case "DM_RUMBLE_GAIN":
+            return tr("Vibrationsstärke", "Rumble Strength")
+        case "DM_RUMBLE_MIN":
+            return tr("Vibrations-Schwellenwert", "Rumble Cutoff")
+        case "DM_PAD_PRESS_TO_JOIN":
+            return tr("Taste drücken zum Beitreten", "Press a Button to Join")
+        case "DM_SW2":
+            return tr("Switch 2 Controller", "Switch 2 Controllers")
+        case "DM_SCREEN_ASPECT":
+            return tr("Seitenverhältnis", "Picture Shape")
+        case "DM_PRESENT_SNAP":
+            return tr("Frame-Pufferung", "Frame Buffering")
+        case "DM_PSO_MTL4":
+            return tr("Metal 4 Pipeline-Archiv", "Metal 4 Pipelines")
+        case "DM_PSO_PREBUILD":
+            return tr("Pipeline-Vorkompilierung", "Pipeline Prebuild")
+        case "DM_NVN_ENC_THREAD":
+            return tr("Separater Encoding-Thread", "Encode Thread")
+        case "DM_FPS_HOLD":
+            return tr("Späte Frames halten", "Hold Frames When Late")
+        case "DM_METAL_HUD":
+            return tr("Metal-Performance-HUD", "Performance HUD")
+        default:
+            return label
+        }
+    }
+
+    /// User-friendly, localized descriptive note explaining the setting's function and performance impact.
+    var localizedNote: String {
+        switch env {
+        case "DM_PRESENT_UPSCALE":
+            return tr("Skaliert das fertige Ausgabebild beim Zeichnen ins Fenster oder den Vollbildschirm per MetalFX hoch. Erhöht die GPU-Last.",
+                      "Upscales the final rendered picture to the window or fullscreen using MetalFX. Uses more GPU time and can increase heat.")
+        case "DM_UPSCALER":
+            return tr("Ersetzt das interne KI-/FSR-Upscaling des Spiels vor der Benutzeroberfläche direkt durch MetalFX. Spart GPU-Renderzeit.",
+                      "Replaces the game's internal neural/FSR upscaler pass with Apple MetalFX before UI passes. Reduces GPU render time.")
+        case "DM_DYNAMIC_RESOLUTION":
+            return tr("Erlaubt dem Spiel, die interne 3D-Auflösung bei hoher GPU-Last dynamisch zu senken. Deaktivieren für dauerhaft native Auflösung.",
+                      "Lets the game lower its resolution under load. Turn off to keep full resolution for the selected console mode.")
+        case "DM_PRESENT_SNAP":
+            return tr("Bis zu ein Frame mehr Bildpufferung für gleichmäßigere Bildausgabe (leicht höhere Eingabelatenz).",
+                      "Up to one frame more display latency.")
+        case "DM_PSO_MTL4":
+            return tr("Hält ein Metal-Pipeline-Archiv im Speicher, um Ruckler zu vermeiden (benötigt mehr RAM).",
+                      "Keeps a pipeline archive; uses more memory.")
+        case "DM_PSO_PREBUILD":
+            return tr("Kompiliert Shader-Pipelines beim ersten Spielstart einmalig vor (dauert wenige Minuten).",
+                      "The first start waits a few minutes for it, once.")
+        case "DM_NVN_ENC_THREAD":
+            return tr("Lagert die Metal-Befehlskodierung auf einen separaten Hintergrund-Thread aus.",
+                      "Offloads Metal command buffer encoding to a dedicated thread.")
+        case "DM_METAL_HUD":
+            return tr("Blendet das macOS Metal-Performance-Overlay (FPS, Bildzeiten, GPU-Last) ein.",
+                      "Displays the Apple Metal performance overlay with FPS and GPU metrics.")
+        case "DM_SW2":
+            return tr("Unterstützt Joy-Con 2 und Pro Controller 2 über Bluetooth (beim Spielstart Sync-Taste gedrückt halten).",
+                      "Plays Joy-Con 2 and Pro Controller 2 over Bluetooth.")
+        default:
+            return note
+        }
+    }
+
+    /// Localized display label for an option value.
+    func localizedChoiceLabel(value: String, originalLabel: String) -> String {
+        switch (env, value) {
+        case ("DM_OPMODE", "0"):
+            return tr("Handheld (720p)", "Handheld (720p)")
+        case ("DM_OPMODE", "1"):
+            return tr("TV / Docked (1080p)", "Docked (1080p)")
+        case ("DM_FULLSCREEN", "0"):
+            return tr("Fenster", "Window")
+        case ("DM_FULLSCREEN", "1"):
+            return tr("Vollbild", "Fullscreen")
+        case ("DM_PRESENT_UPSCALE", "off"):
+            return tr("Standard (Bilinear)", "Standard (Bilinear)")
+        case ("DM_PRESENT_UPSCALE", "metalfx"):
+            return "MetalFX"
+        case ("DM_UPSCALER", "game"):
+            return tr("Spiel-eigen (Original)", "Game's own (Original)")
+        case ("DM_UPSCALER", "metalfx"):
+            return "MetalFX"
+        default:
+            return originalLabel
+        }
+    }
+
     var onValue: String { on ?? "1" }
     var offValue: String { off ?? "0" }
 

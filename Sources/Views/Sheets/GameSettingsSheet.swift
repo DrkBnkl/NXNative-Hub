@@ -104,10 +104,22 @@ struct GameSettingsSheet: View {
     @ViewBuilder
     private var headerFooter: some View {
         if settings.usesSettingsList {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 6) {
                 Text(tr("Die Einstellungen stammen aus dem Spiel selbst und gelten auch für sein eigenes Startfenster. Gespeichert werden nur Abweichungen von den getesteten Standardwerten.",
                         "These settings come from the game itself and also apply to its own launch window. Only changes from the tested defaults are saved."))
-                if settings.hasEnvValuesToMigrate {
+                if !settings.pinnedByEnvFile.isEmpty {
+                    HStack(spacing: 6) {
+                        Image(systemName: "pin.fill").foregroundStyle(.orange)
+                        Text(tr("Einige Werte sind durch eine manuelle env.txt fixiert.",
+                                "Some settings are pinned by a manual env.txt."))
+                        Spacer()
+                        Button(tr("env.txt im Finder anzeigen", "Show env.txt in Finder")) {
+                            NSWorkspace.shared.selectFile(settings.envFilePath, inFileViewerRootedAtPath: "")
+                        }
+                        .buttonStyle(.link)
+                    }
+                    .font(.caption)
+                } else if settings.hasEnvValuesToMigrate {
                     Label(tr("env.txt enthält noch Werte einer älteren Hub-Version. Beim Sichern werden sie übernommen und aus env.txt entfernt, damit die getesteten Standardwerte wieder greifen.",
                              "env.txt still contains values from an older Hub version. Saving takes them over and removes them from env.txt, so the tested defaults apply again."),
                           systemImage: "info.circle")
@@ -158,14 +170,14 @@ struct GameSettingsSheet: View {
             } else {
                 switch row.kind {
                 case .choice:
-                    Picker(row.label, selection: value) {
+                    Picker(row.localizedLabel, selection: value) {
                         ForEach(row.choices, id: \.value) { option in
-                            Text(option.label).tag(option.value)
+                            Text(row.localizedChoiceLabel(value: option.value, originalLabel: option.label)).tag(option.value)
                         }
                     }
                     .modifier(ChoicePickerStyle(segmented: row.choices.count <= 3))
                 case .toggle:
-                    Toggle(row.label, isOn: Binding(
+                    Toggle(row.localizedLabel, isOn: Binding(
                         get: { value.wrappedValue == row.onValue },
                         set: { value.wrappedValue = $0 ? row.onValue : row.offValue }))
                 case .range:
@@ -173,8 +185,8 @@ struct GameSettingsSheet: View {
                 case nil:
                     EmptyView()
                 }
-                if !row.note.isEmpty {
-                    Text(row.note)
+                if !row.localizedNote.isEmpty {
+                    Text(row.localizedNote)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -184,13 +196,30 @@ struct GameSettingsSheet: View {
 
     @ViewBuilder
     private func fixedRow(_ row: LauncherSetting, value: String, reason: String) -> some View {
-        let label = row.choices.first { $0.value == value }?.label ?? value
-        LabeledContent(row.label) {
-            Text(label)
+        let rawLabel = row.choices.first { $0.value == value }?.label ?? value
+        let displayLabel = row.localizedChoiceLabel(value: value, originalLabel: rawLabel)
+        LabeledContent(row.localizedLabel) {
+            Text(displayLabel)
         }
-        Text(reason)
-            .font(.caption)
-            .foregroundStyle(.secondary)
+        if !row.localizedNote.isEmpty {
+            Text(row.localizedNote)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        HStack(spacing: 4) {
+            Text(reason)
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+            if settings.pinnedByEnvFile[row.env] != nil {
+                Button {
+                    NSWorkspace.shared.selectFile(settings.envFilePath, inFileViewerRootedAtPath: "")
+                } label: {
+                    Text(tr("Öffnen", "Open"))
+                        .font(.caption2)
+                }
+                .buttonStyle(.link)
+            }
+        }
     }
 
     private func rangeRow(_ row: LauncherSetting, value: Binding<String>) -> some View {
@@ -199,16 +228,16 @@ struct GameSettingsSheet: View {
         let number = Binding<Double>(
             get: { Double(value.wrappedValue) ?? Double(row.defaultValue) ?? lower },
             set: { value.wrappedValue = row.formatRange($0) })
-        return LabeledContent(row.label) {
+        return LabeledContent(row.localizedLabel) {
             HStack {
                 if let step = row.step, step > 0 {
                     Slider(value: number, in: lower...upper, step: step)
                         .frame(maxWidth: 200)
-                        .accessibilityLabel(row.label)
+                        .accessibilityLabel(row.localizedLabel)
                 } else {
                     Slider(value: number, in: lower...upper)
                         .frame(maxWidth: 200)
-                        .accessibilityLabel(row.label)
+                        .accessibilityLabel(row.localizedLabel)
                 }
                 VStack(alignment: .trailing, spacing: 0) {
                     Text(row.percentText(value.wrappedValue))
@@ -245,11 +274,17 @@ struct GameSettingsSheet: View {
             }
             .pickerStyle(.segmented)
 
-            Picker(tr("Hochskalierung", "Upscaling"), selection: $settings.upscaling) {
-                Text("Apple MetalFX").tag("metalfx")
-                Text(tr("Aus", "Off")).tag("off")
+            VStack(alignment: .leading, spacing: 4) {
+                Picker(tr("Fenster-Hochskalierung", "Window Upscaling"), selection: $settings.upscaling) {
+                    Text("Apple MetalFX").tag("metalfx")
+                    Text(tr("Standard (Aus)", "Standard (Off)")).tag("off")
+                }
+                .pickerStyle(.segmented)
+                Text(tr("Skaliert das Ausgabebild beim Zeichnen ins Fenster oder den Vollbildschirm per MetalFX hoch.",
+                        "Upscales the picture to the window or fullscreen using MetalFX."))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
-            .pickerStyle(.segmented)
 
             Toggle(tr("Frame-Buffering (weniger Ruckler)", "Frame buffering (reduces stutter)"), isOn: $settings.frameBuffering)
             Toggle(tr("FPS-Anzeige im Spiel", "In-game FPS counter"), isOn: $settings.showFps)

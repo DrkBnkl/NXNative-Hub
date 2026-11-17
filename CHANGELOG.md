@@ -5,6 +5,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.2.1] – 2026-11-17
+
+### Added
+- Crystal-clear differentiation and localized descriptions for **Window Upscaling (Presentation)** (`DM_PRESENT_UPSCALE`) and **Game's Internal Upscaler** (`DM_UPSCALER`) in the Game Settings sheet.
+- Complete German and English localization for all standard nxnative runtime settings and choices in the launcher settings list.
+- Direct link and button in Game Settings to reveal and edit `env.txt` in Finder when settings are pinned.
+
+### Fixed
+- Direct update and recompile actions now automatically update and replace the installed `.app` bundle in `~/NXNative/Games/` upon build completion, ensuring the library immediately reflects the updated build.
+
 ## [1.2.0] – 2026-11-17
 
 ### Added

@@ -35,10 +35,12 @@ The interface is fully localized in **English** and **German**.
 - **Non-Destructive Storage**: Persists user customizations as macOS preferences (`saved_choices`) without overriding tested default profiles.
 
 ### 🔄 Update & Recompile Intelligence
-- **Per-Game Update Indicators**: Real-time indicators alert you when an installed game would benefit from recompilation due to:
-  - Upstream nxnative engine updates
+- **Shader Recompile vs. App Update Check**: Automatically checks whether shaders actually need to be recompiled (shader chain or shader profile modifications) or whether a fast App Update is sufficient (preserving cached shaders and updating host/launcher in seconds).
+- **Direct One-Click Update**: Directly update or recompile games from the library row, game settings, or status inspector with automatic source and build folder resolution.
+- **Per-Game Update Indicators**: Real-time indicators alert you when an installed game would benefit from an update:
+  - Upstream nxnative engine updates (fast App Update)
   - Updated game compatibility profiles
-  - Shader translation chain improvements
+  - Shader translation chain improvements (full Recompilation)
 - **In-App Updater**: Fetch upstream git updates, Python virtual environment packages, and toolchain dependencies directly from within the app.
 
 ### 🩺 Environment & Toolchain Diagnostics

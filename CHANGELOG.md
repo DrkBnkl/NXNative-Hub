@@ -5,6 +5,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+- Direct game update and recompile actions in the library, game status inspector, and settings sheet.
+- Intelligent pre-flight check determining whether shaders must be recompiled or if a fast App Update is sufficient (preserving cached shaders).
+- `GameSourceLocator` for automatic detection of game source archives (.nsp) and build folders (`<titleId>_build`).
+- Filter options for App Updates, Recompilations, and All Updates in the game library.
+
 ## [1.1.0] – 2026-11-15
 
 ### Added
@@ -55,20 +61,3 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - Granular control over frame rate limits, handheld/docked mode, render scale multipliers, MetalFX upscaling, Metal HUD, and frame buffering.
   - Audio and haptic settings with adjustable rumble gain sliders.
   - Per-game runtime language overrides.
-  - Persistence via macOS preferences (`saved_choices`) without overriding tested profile defaults.
-  - Legacy `env.txt` support for older nxnative builds.
-
-- **Update & Recompilation Intelligence**:
-  - Per-game update indicators evaluating installed titles against upstream engine commits, profile updates, and shader translation chain improvements.
-  - Interactive status sheet detailing commit differences, shader versions, and recompilation recommendations.
-  - In-app updater for upstream nxnative repository, Python packages, and toolchain dependencies.
-
-- **Environment Diagnostics & Save Management**:
-  - Automated setup checklist verifying macOS version, Xcode, Metal toolchain, Homebrew utilities, .NET SDK, Python 3.12+, and `prod.keys`.
-  - One-click installation and remediation for missing dependencies.
-  - Save game import supporting JKSV, Checkpoint, and Ryujinx archives with automated timestamped backups.
-
-- **User Interface & Automation**:
-  - Full bilingual localization in German and English with instantaneous runtime switching.
-  - Apple Human Interface Guidelines compliant SwiftUI interface.
-  - Automated GitHub Actions CI workflow building and packaging releases on Apple Silicon runners (`macos-15`).

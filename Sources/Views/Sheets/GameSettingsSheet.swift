@@ -58,6 +58,23 @@ struct GameSettingsSheet: View {
                                     .font(.body.monospaced())
                             }
                         }
+                        if game.updateStatus.isUpdateAvailable {
+                            Button {
+                                router.showingGameSettings = false
+                                router.statusTargetGame = game
+                            } label: {
+                                Label(
+                                    game.updateStatus.isAppUpdateSufficient
+                                        ? tr("App jetzt aktualisieren …", "Update App Now…")
+                                        : tr("Jetzt neu kompilieren …", "Recompile Now…"),
+                                    systemImage: game.updateStatus.isAppUpdateSufficient
+                                        ? "arrow.up.circle.fill"
+                                        : "arrow.triangle.2.circlepath"
+                                )
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.small)
+                        }
                     }
                 }
 

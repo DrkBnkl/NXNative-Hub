@@ -7,6 +7,10 @@ struct GameStatusSheet: View {
     let game: InstalledGame
     @EnvironmentObject private var router: AppRouter
     @EnvironmentObject private var builderForm: BuilderFormModel
+    @EnvironmentObject private var buildManager: BuildManager
+    @EnvironmentObject private var buildMonitor: ActiveBuildMonitor
+    @EnvironmentObject private var prefs: AppPreferences
+    @EnvironmentObject private var library: GameLibraryManager
     @EnvironmentObject private var updater: UpdateManager
 
     var body: some View {
@@ -35,7 +39,7 @@ struct GameStatusSheet: View {
 
             bottomBar
         }
-        .frame(width: 540, height: 500)
+        .frame(width: 560, height: 530)
     }
 
     // MARK: Header
@@ -71,25 +75,53 @@ struct GameStatusSheet: View {
     // MARK: Status Banner
 
     private var statusBanner: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: game.updateStatus.statusIcon)
-                .font(.system(size: 26))
-                .foregroundStyle(game.updateStatus.statusColor)
-                .frame(width: 32, height: 32)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(game.updateStatus.statusTitle)
-                    .font(.headline)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: game.updateStatus.statusIcon)
+                    .font(.system(size: 26))
                     .foregroundStyle(game.updateStatus.statusColor)
+                    .frame(width: 32, height: 32)
 
-                Text(game.updateStatus.tooltip)
-                    .font(.callout)
-                    .foregroundStyle(.primary)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(game.updateStatus.statusTitle)
+                        .font(.headline)
+                        .foregroundStyle(game.updateStatus.statusColor)
+
+                    Text(game.updateStatus.tooltip)
+                        .font(.callout)
+                        .foregroundStyle(.primary)
+                }
+            }
+
+            if game.updateStatus.isAppUpdateSufficient {
+                HStack(alignment: .center, spacing: 8) {
+                    Image(systemName: "bolt.fill")
+                        .foregroundStyle(.blue)
+                    Text(tr("Shader sind aktuell. Ein schnelles App-Update aktualisiert die Host-App und Spieleinstellungen in wenigen Sekunden (keine Shader-Neukompilierung nötig).",
+                            "Shaders are up to date. A quick app update updates the host app and settings in seconds (no shader recompilation needed)."))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.blue.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
+            } else if game.updateStatus.requiresShaderRecompile {
+                HStack(alignment: .center, spacing: 8) {
+                    Image(systemName: "clock.arrow.circlepath")
+                        .foregroundStyle(.orange)
+                    Text(tr("Shader müssen neu kompiliert werden, da sich die Shader-Chain oder Shader-Definitionen geändert haben. Das dauert je nach Spiel einige Minuten.",
+                            "Shaders must be recompiled because the shader chain or shader definitions have changed. Depending on the game, this takes a few minutes."))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
             }
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(game.updateStatus.statusColor.opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
+        .background(game.updateStatus.statusColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
         .overlay(
             RoundedRectangle(cornerRadius: 10)
                 .strokeBorder(game.updateStatus.statusColor.opacity(0.25), lineWidth: 1)
@@ -131,6 +163,25 @@ struct GameStatusSheet: View {
                     repoValue: currentRepoChain.map { "b-\($0)" } ?? "–",
                     isMismatch: game.shaderChain != currentRepoChain
                 )
+
+                HStack {
+                    Text(tr("Shader-Status", "Shader Status"))
+                        .font(.callout)
+                    Spacer()
+                    if game.updateStatus.requiresShaderRecompile {
+                        Text(tr("Neukompilierung erforderlich", "Recompile Required"))
+                            .font(.callout.weight(.medium))
+                            .foregroundStyle(Color.orange)
+                    } else if game.updateStatus.isAppUpdateSufficient {
+                        Text(tr("Aktuell (App-Update reicht)", "Up to Date (App Update Sufficient)"))
+                            .font(.callout.weight(.medium))
+                            .foregroundStyle(Color.green)
+                    } else {
+                        Text(tr("Aktuell", "Up to Date"))
+                            .font(.callout)
+                            .foregroundStyle(Color.green)
+                    }
+                }
 
                 HStack {
                     Text(tr("Build-Datum", "Build Date"))
@@ -217,30 +268,49 @@ struct GameStatusSheet: View {
             }
             .keyboardShortcut(.cancelAction)
 
-            Button(tr("Im Builder öffnen", "Open in Builder")) {
-                openInBuilder()
+            if game.updateStatus.isUpdateAvailable {
+                Button(tr("Im Builder anpassen …", "Customize in Builder…")) {
+                    openInBuilder()
+                }
+                .buttonStyle(.bordered)
+
+                Button(action: performUpdate) {
+                    Label(
+                        game.updateStatus.isAppUpdateSufficient
+                            ? tr("App jetzt aktualisieren", "Update App Now")
+                            : tr("Jetzt neu kompilieren", "Recompile Now"),
+                        systemImage: game.updateStatus.isAppUpdateSufficient
+                            ? "arrow.up.circle.fill"
+                            : "arrow.triangle.2.circlepath"
+                    )
+                }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
+            } else {
+                Button(tr("Im Builder öffnen", "Open in Builder")) {
+                    openInBuilder()
+                }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
             }
-            .buttonStyle(.borderedProminent)
-            .keyboardShortcut(.defaultAction)
         }
         .padding(14)
     }
 
-    private func openInBuilder() {
-        // Try locating matching game files in ~/NXNative/Import/
-        let importFolder = NXPaths.importFolder
-        var matchingFolder: String?
-        if let subdirs = try? FileManager.default.contentsOfDirectory(at: importFolder, includingPropertiesForKeys: nil) {
-            for dir in subdirs {
-                let meta = GameMetaDetector.detect(in: dir)
-                if meta.titleId == game.titleId || meta.baseTitleId == game.titleId {
-                    matchingFolder = dir.path
-                    break
-                }
-            }
-        }
+    private func performUpdate() {
+        GameUpdateAction.performUpdate(
+            for: game,
+            router: router,
+            builderForm: builderForm,
+            buildManager: buildManager,
+            buildMonitor: buildMonitor,
+            prefs: prefs,
+            library: library
+        )
+    }
 
-        if let source = matchingFolder {
+    private func openInBuilder() {
+        if let source = GameSourceLocator.findSourceDirectory(for: game) {
             builderForm.gameDirectory = source
         }
         router.statusTargetGame = nil

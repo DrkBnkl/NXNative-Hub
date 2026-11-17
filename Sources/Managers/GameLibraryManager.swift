@@ -19,6 +19,10 @@ final class GameLibraryManager: ObservableObject {
         games.filter { $0.updateStatus.isRecompileRecommended }.count
     }
 
+    var appUpdateAvailableCount: Int {
+        games.filter { $0.updateStatus.isAppUpdateSufficient }.count
+    }
+
     var updateAvailableCount: Int {
         games.filter { $0.updateStatus.isUpdateAvailable }.count
     }

@@ -10,6 +10,19 @@ struct RepoState {
 }
 
 enum GameUpdateChecker {
+    /// File names in dm/games/<titleId> that directly influence shaders and their compilation.
+    static let shaderRelatedFiles: Set<String> = [
+        "shader_map.tsv",
+        "shader_pairs.tsv",
+        "c1_full.tsv",
+        "cb_extent.tsv",
+        "pso_manifest.tsv",
+        "pso_pairs.tsv",
+        "shader_facts.tsv",
+        "shader_seen.tsv",
+        "shader_map.tsv.conflicts.tsv"
+    ]
+
     /// Loads the current nxnative repository state (HEAD commit and shader chain version).
     static func loadRepoState() -> RepoState? {
         let repo = NXPaths.repoPath
@@ -38,7 +51,8 @@ enum GameUpdateChecker {
         return RepoState(repoPath: repo, headCommit: head, headSubject: subject, shaderChain: chain)
     }
 
-    /// Evaluates whether an update exists for the specified game and whether recompilation is recommended.
+    /// Evaluates whether an update exists for the specified game and whether recompilation of shaders
+    /// is truly necessary or if an App Update is sufficient.
     static func evaluate(
         titleId: String,
         buildCommit: String?,
@@ -55,6 +69,7 @@ enum GameUpdateChecker {
 
         // 2. Check profile changes in dm/games/<titleId>
         var profileCommits: [String] = []
+        var changedShaderFiles: [String] = []
         let candidateTids = [titleId, SwitchTitleID.baseID(of: titleId)].compactMap { $0 }
         var profileRelPath: String?
 
@@ -69,17 +84,22 @@ enum GameUpdateChecker {
 
         if let relPath = profileRelPath {
             let logResult: CommandRunner.Result
+            let diffResult: CommandRunner.Result
+
             if let commit = buildCommit, !commit.isEmpty {
                 let verify = CommandRunner.git(repo.repoPath, "rev-parse", "--verify", "\(commit)^{commit}")
                 if verify.succeeded {
                     logResult = CommandRunner.git(repo.repoPath, "log", "\(commit)..HEAD", "--oneline", "--", relPath)
+                    diffResult = CommandRunner.git(repo.repoPath, "diff", "--name-only", "\(commit)..HEAD", "--", relPath)
                 } else {
                     let epoch = Int(mtime.timeIntervalSince1970)
                     logResult = CommandRunner.git(repo.repoPath, "log", "--since=\(epoch)", "--oneline", "--", relPath)
+                    diffResult = CommandRunner.git(repo.repoPath, "diff", "--name-only", "--since=\(epoch)", "HEAD", "--", relPath)
                 }
             } else {
                 let epoch = Int(mtime.timeIntervalSince1970)
                 logResult = CommandRunner.git(repo.repoPath, "log", "--since=\(epoch)", "--oneline", "--", relPath)
+                diffResult = CommandRunner.git(repo.repoPath, "diff", "--name-only", "--since=\(epoch)", "HEAD", "--", relPath)
             }
 
             if logResult.succeeded {
@@ -87,6 +107,18 @@ enum GameUpdateChecker {
                     .split(separator: "\n")
                     .map(String.init)
                     .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+            }
+
+            if diffResult.succeeded {
+                let changedPaths = diffResult.output
+                    .split(separator: "\n")
+                    .map(String.init)
+                for path in changedPaths {
+                    let filename = (path as NSString).lastPathComponent
+                    if shaderRelatedFiles.contains(filename) && !changedShaderFiles.contains(filename) {
+                        changedShaderFiles.append(filename)
+                    }
+                }
             }
         }
 
@@ -108,31 +140,50 @@ enum GameUpdateChecker {
             engineCommitsCount = Int(countResult.trimmedOutput) ?? 0
         }
 
+        let hasProfileShaderUpdates = !changedShaderFiles.isEmpty
         let hasProfileUpdates = !profileCommits.isEmpty
+        let hasProfileNonShaderUpdates = hasProfileUpdates && !hasProfileShaderUpdates
 
-        if hasProfileUpdates && chainMismatch {
-            return .recompileRecommended(reason: .profileAndShaderUpdated(
+        // 4. Decision: Shaders need recompilation ONLY if the shader chain or shader definitions changed.
+        //    Otherwise, if shaders are unaffected, an App Update is completely sufficient.
+        if chainMismatch && (hasProfileShaderUpdates || hasProfileUpdates) {
+            return .recompileRecommended(reason: .chainAndProfileUpdated(
                 commitsCount: profileCommits.count,
                 commitTitles: profileCommits,
                 currentChain: shaderChain ?? "?",
                 repoChain: repo.shaderChain ?? "?"
-            ))
-        } else if hasProfileUpdates {
-            return .recompileRecommended(reason: .profileUpdated(
-                commitsCount: profileCommits.count,
-                commitTitles: profileCommits
             ))
         } else if chainMismatch {
             return .recompileRecommended(reason: .shaderChainUpdated(
                 currentChain: shaderChain ?? "?",
                 repoChain: repo.shaderChain ?? "?"
             ))
+        } else if hasProfileShaderUpdates {
+            return .recompileRecommended(reason: .shaderProfileUpdated(
+                commitsCount: profileCommits.count,
+                commitTitles: profileCommits,
+                changedFiles: changedShaderFiles
+            ))
         } else if buildCommit == nil && engineCommitsCount > 0 {
+            // Older build before commit tracking: shaders could be from any older chain
             return .recompileRecommended(reason: .legacyBuild(
                 reason: tr("Älterer Build vor Commit-Tracking", "Older build before commit tracking")
             ))
+        } else if hasProfileNonShaderUpdates && engineCommitsCount > 0 {
+            // Both engine and non-shader profile updates (e.g. settings/README): App Update suffices
+            return .appUpdateAvailable(reason: .engineAndProfile(
+                commitsCount: engineCommitsCount,
+                commitTitles: profileCommits
+            ))
+        } else if hasProfileNonShaderUpdates {
+            // Non-shader profile changes only: App Update suffices
+            return .appUpdateAvailable(reason: .profileNonShader(
+                commitsCount: profileCommits.count,
+                commitTitles: profileCommits
+            ))
         } else if engineCommitsCount > 0 {
-            return .engineUpdateAvailable(commitCount: engineCommitsCount)
+            // Engine commits only: App Update suffices
+            return .appUpdateAvailable(reason: .engineOnly(commitsCount: engineCommitsCount))
         } else {
             return .upToDate
         }

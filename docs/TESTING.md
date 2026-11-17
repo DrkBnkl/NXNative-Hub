@@ -55,9 +55,12 @@ This checklist outlines the manual test matrix to verify application stability, 
 
 ## 5. Recompilation & Update Intelligence
 
-- [ ] **Status Badges**: Library items display accurate update status (Up-to-Date, Update Available, Recompile Recommended).
-- [ ] **Status Inspector**: Clicking a status badge opens the detailed breakdown showing upstream engine commit differences, shader chains, and profile revisions.
-- [ ] **Filter Integration**: The library filter allows sorting/filtering titles specifically flagged for recompilation.
+- [ ] **Status Badges & Intelligence**: Library items display accurate update status (Up-to-Date, App Update Available, Recompile Recommended).
+  - Verifies whether shaders actually need to be recompiled (due to shader chain changes or shader profile file modifications) or if an App Update is sufficient.
+  - Distinguishes fast App Updates (blue badge, host/engine changes without shader recompile) from full Recompilation (orange badge, shader chain or shader table mismatch).
+- [ ] **Status Inspector**: Clicking a status badge opens the detailed breakdown showing upstream engine commit differences, shader chains, shader status, and profile revisions.
+- [ ] **Direct Update**: Status inspector and game rows directly offer "App jetzt aktualisieren" / "Jetzt neu kompilieren", which automatically resolves the game's source/build directory and starts the build with live progress.
+- [ ] **Filter Integration**: The library filter allows filtering titles specifically by App Updates, Recompilation, or All Updates.
 
 ---
 

@@ -6,6 +6,7 @@ import UniformTypeIdentifiers
 
 enum LibraryFilter: String, CaseIterable, Identifiable {
     case all
+    case appUpdates
     case recompile
     case updates
 
@@ -14,8 +15,9 @@ enum LibraryFilter: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .all: return tr("Alle Spiele", "All Games")
+        case .appUpdates: return tr("App-Updates", "App Updates")
         case .recompile: return tr("Neukompilierung empfohlen", "Recompile Recommended")
-        case .updates: return tr("Updates verfügbar", "Updates Available")
+        case .updates: return tr("Alle Updates", "All Updates")
         }
     }
 }
@@ -32,6 +34,7 @@ struct LibraryView: View {
         var list = library.games
         switch filter {
         case .all: break
+        case .appUpdates: list = list.filter { $0.updateStatus.isAppUpdateSufficient }
         case .recompile: list = list.filter { $0.updateStatus.isRecompileRecommended }
         case .updates: list = list.filter { $0.updateStatus.isUpdateAvailable }
         }
@@ -50,9 +53,16 @@ struct LibraryView: View {
         guard !library.games.isEmpty else { return "" }
         let total = library.games.count
         let recompile = library.recompileRecommendedCount
-        if recompile > 0 {
+        let appUpdates = library.appUpdateAvailableCount
+        if recompile > 0 && appUpdates > 0 {
+            return tr("\(total) Spiele • \(appUpdates) App-Update(s) • \(recompile) Neukompilierung empfohlen",
+                      "\(total) games • \(appUpdates) app update(s) • \(recompile) recompile recommended")
+        } else if recompile > 0 {
             return tr("\(total) Spiele • \(recompile) Neukompilierung empfohlen",
                       "\(total) games • \(recompile) recompile recommended")
+        } else if appUpdates > 0 {
+            return tr("\(total) Spiele • \(appUpdates) App-Update(s) verfügbar",
+                      "\(total) games • \(appUpdates) app update(s) available")
         }
         return tr("\(total) Spiele", "\(total) games")
     }
@@ -187,6 +197,13 @@ struct LibraryView: View {
         Button(tr("Spiel-Einstellungen …", "Game Settings…")) { openSettings(game) }
         Button(tr("nxnative-Status & Neukompilierung …", "nxnative Status & Recompilation…")) {
             router.statusTargetGame = game
+        }
+        if game.updateStatus.isUpdateAvailable {
+            Button(game.updateStatus.isAppUpdateSufficient
+                   ? tr("App aktualisieren …", "Update App…")
+                   : tr("Spiel neu kompilieren …", "Recompile Game…")) {
+                router.statusTargetGame = game
+            }
         }
         Divider()
         Button(tr("Spielstand importieren …", "Import Save…")) { importSave(for: game) }

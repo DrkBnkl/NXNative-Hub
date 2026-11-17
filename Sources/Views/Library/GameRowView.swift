@@ -61,6 +61,23 @@ struct GameRowView: View {
 
             Spacer(minLength: 8)
 
+            if game.updateStatus.isUpdateAvailable {
+                Button(action: onShowStatus) {
+                    Label(
+                        game.updateStatus.isAppUpdateSufficient
+                            ? tr("App-Update", "App Update")
+                            : tr("Neu kompilieren", "Recompile"),
+                        systemImage: game.updateStatus.isAppUpdateSufficient
+                            ? "arrow.up.circle.fill"
+                            : "arrow.triangle.2.circlepath"
+                    )
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .tint(game.updateStatus.statusColor)
+                .help(game.updateStatus.tooltip)
+            }
+
             Button(action: onSettings) {
                 Image(systemName: "slider.horizontal.3")
             }

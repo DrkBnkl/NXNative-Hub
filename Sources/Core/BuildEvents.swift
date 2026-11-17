@@ -287,4 +287,26 @@ enum BuildWorkFolder {
             .map { $0.appendingPathComponent("logs").path }
             .first { FileManager.default.fileExists(atPath: $0) }
     }
+
+    /// Calculates the size of a folder in bytes.
+    static func size(of url: URL) -> Int64 {
+        let fm = FileManager.default
+        var total: Int64 = 0
+        if let enumerator = fm.enumerator(at: url, includingPropertiesForKeys: [.fileSizeKey], options: [.skipsHiddenFiles]) {
+            for case let fileURL as URL in enumerator {
+                total += Int64((try? fileURL.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0)
+            }
+        }
+        return total
+    }
+
+    /// Returns human-readable size of a build folder (e.g. "9.0 GB").
+    static func formattedSize(of url: URL) -> String {
+        ByteCountFormatter.string(fromByteCount: size(of: url), countStyle: .file)
+    }
+
+    /// Safely moves the build folder to the macOS Trash.
+    static func trashFolder(at url: URL) throws {
+        try FileManager.default.trashItem(at: url, resultingItemURL: nil)
+    }
 }

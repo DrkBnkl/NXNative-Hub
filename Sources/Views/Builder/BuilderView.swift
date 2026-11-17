@@ -362,9 +362,11 @@ struct BuilderView: View {
 
 struct BuildProgressView: View {
     @EnvironmentObject private var manager: BuildManager
+    @EnvironmentObject private var form: BuilderFormModel
     @EnvironmentObject private var router: AppRouter
     @EnvironmentObject private var gameSettings: GameSettingsModel
     @State private var showLog = true
+    @State private var didTrashBuildFolder = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -394,6 +396,10 @@ struct BuildProgressView: View {
 
             if let artifact = manager.createdArtifactPath {
                 artifactRow(artifact)
+            }
+
+            if manager.buildSucceeded {
+                cleanupSection
             }
 
             if let error = manager.errorMessage {
@@ -479,6 +485,49 @@ struct BuildProgressView: View {
         }
         .padding(10)
         .background(Color.green.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    @ViewBuilder
+    private var cleanupSection: some View {
+        if let folder = manager.buildFolders.first, !didTrashBuildFolder {
+            HStack(alignment: .center, spacing: 12) {
+                Image(systemName: "externaldrive.badge.minus")
+                    .font(.system(size: 24))
+                    .foregroundStyle(.blue)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(tr("Speicherplatz freigeben: Build-Ordner löschen", "Free Disk Space: Delete Build Folder"))
+                        .font(.callout.weight(.semibold))
+                    Text(tr("Der Build-Ordner (\(folder.lastPathComponent)) belegt \(BuildWorkFolder.formattedSize(of: folder)). Die NSP-Quelldateien bleiben erhalten.",
+                            "The build folder (\(folder.lastPathComponent)) occupies \(BuildWorkFolder.formattedSize(of: folder)). The NSP source files are kept."))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                Button(tr("In Papierkorb legen", "Move to Trash")) {
+                    if manager.trashBuildFolder(folder) {
+                        didTrashBuildFolder = true
+                        form.scanGameFolder()
+                    }
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
+            .padding(10)
+            .background(Color.blue.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+        } else if didTrashBuildFolder {
+            HStack(spacing: 8) {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+                Text(tr("Build-Ordner wurde in den Papierkorb gelegt – Speicherplatz freigegeben.",
+                        "Build folder was moved to the Trash – disk space freed."))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(6)
+        }
     }
 
     private func copyLog() {

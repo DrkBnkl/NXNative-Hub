@@ -13,6 +13,10 @@ struct GameStatusSheet: View {
     @EnvironmentObject private var library: GameLibraryManager
     @EnvironmentObject private var updater: UpdateManager
 
+    @State private var buildFolderURL: URL?
+    @State private var buildFolderSizeText: String?
+    @State private var didTrashBuildFolder = false
+
     var body: some View {
         VStack(spacing: 0) {
             header
@@ -28,6 +32,12 @@ struct GameStatusSheet: View {
 
                     comparisonSection
 
+                    if let folder = buildFolderURL, !didTrashBuildFolder {
+                        buildFolderCleanupCard(folder)
+                    } else if didTrashBuildFolder {
+                        trashedSuccessBadge
+                    }
+
                     if !game.updateStatus.commitTitles.isEmpty {
                         profileCommitsSection
                     }
@@ -40,6 +50,9 @@ struct GameStatusSheet: View {
             bottomBar
         }
         .frame(width: 560, height: 530)
+        .onAppear {
+            checkForBuildFolder()
+        }
     }
 
     // MARK: Header
@@ -315,5 +328,78 @@ struct GameStatusSheet: View {
         }
         router.statusTargetGame = nil
         router.selection = .builder
+    }
+
+    // MARK: Build Folder Cleanup
+
+    @ViewBuilder
+    private func buildFolderCleanupCard(_ folder: URL) -> some View {
+        GroupBox {
+            HStack(alignment: .center, spacing: 12) {
+                Image(systemName: "externaldrive.badge.minus")
+                    .font(.system(size: 22))
+                    .foregroundStyle(.blue)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(tr("Build-Cache belegt \(buildFolderSizeText ?? "…")",
+                            "Build cache occupies \(buildFolderSizeText ?? "…")"))
+                        .font(.callout.weight(.semibold))
+                    Text(tr("Der Build-Ordner (\(folder.lastPathComponent)) kann gelöscht werden, um Speicherplatz freizugeben. Die NSP-Quelldateien bleiben erhalten.",
+                            "The build folder (\(folder.lastPathComponent)) can be deleted to free space. The NSP source files will be kept."))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                Button(tr("In Papierkorb legen", "Move to Trash")) {
+                    trashBuildFolder(folder)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
+            .padding(4)
+        } label: {
+            Text(tr("Speicherplatz-Bereinigung", "Disk Space Cleanup"))
+        }
+    }
+
+    private var trashedSuccessBadge: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(.green)
+            Text(tr("Build-Ordner wurde in den Papierkorb gelegt – Speicherplatz erfolgreich freigegeben.",
+                    "Build folder was moved to the Trash – disk space freed successfully."))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.green.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
+    }
+
+    private func trashBuildFolder(_ folder: URL) {
+        do {
+            try BuildWorkFolder.trashFolder(at: folder)
+            didTrashBuildFolder = true
+        } catch {
+            let alert = NSAlert()
+            alert.messageText = tr("Fehler beim Löschen", "Error Deleting")
+            alert.informativeText = error.localizedDescription
+            alert.alertStyle = .warning
+            alert.runModal()
+        }
+    }
+
+    private func checkForBuildFolder() {
+        DispatchQueue.global(qos: .userInitiated).async {
+            if let folder = GameSourceLocator.findBuildFolder(for: game) {
+                let size = BuildWorkFolder.formattedSize(of: folder)
+                DispatchQueue.main.async {
+                    self.buildFolderURL = folder
+                    self.buildFolderSizeText = size
+                }
+            }
+        }
     }
 }

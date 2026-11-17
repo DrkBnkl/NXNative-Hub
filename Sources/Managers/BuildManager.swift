@@ -47,6 +47,26 @@ final class BuildManager: ObservableObject {
     @Published private(set) var wasCancelled = false
     /// `<title ID>_build/logs` of the last build (full tool output), shown after a failure.
     @Published private(set) var buildLogsPath: String?
+    /// Game directory where the build was run.
+    @Published private(set) var lastGameDirectory: String?
+
+    var buildFolders: [URL] {
+        guard let dir = lastGameDirectory else { return [] }
+        return BuildWorkFolder.find(in: dir)
+    }
+
+    func trashBuildFolder(_ url: URL) -> Bool {
+        do {
+            try BuildWorkFolder.trashFolder(at: url)
+            appendLog(tr("✓ Build-Ordner in den Papierkorb gelegt: \(url.lastPathComponent)",
+                         "✓ Build folder moved to Trash: \(url.lastPathComponent)"))
+            return true
+        } catch {
+            appendLog(tr("⚠︎ Build-Ordner konnte nicht entfernt werden: \(error.localizedDescription)",
+                         "⚠︎ Could not remove build folder: \(error.localizedDescription)"))
+            return false
+        }
+    }
 
     private var runner: StreamingProcess?
     private var failureTracker = BuildFailureTracker()
@@ -207,6 +227,7 @@ final class BuildManager: ObservableObject {
         isFinished = true
         runner = nil
         buildSucceeded = (exitCode == 0)
+        lastGameDirectory = options.gameDirectory
         let gameName = URL(fileURLWithPath: options.gameDirectory).lastPathComponent
 
         if buildSucceeded {

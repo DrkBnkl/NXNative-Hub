@@ -7,6 +7,7 @@ struct LiveLogSheet: View {
     @EnvironmentObject private var importManager: ImportBatchManager
     @EnvironmentObject private var buildManager: BuildManager
     @EnvironmentObject private var router: AppRouter
+    @State private var didTrashBuildFolder = false
 
     /// Builds started by this app are streamed live; external builds are read from the log file every 2.5 s.
     private var displayLines: [String] {
@@ -53,6 +54,35 @@ struct LiveLogSheet: View {
 
                 LogConsoleView(lines: displayLines, minHeight: 240)
                     .frame(maxHeight: .infinity)
+
+                if buildManager.isFinished && buildManager.buildSucceeded,
+                   let folder = buildManager.buildFolders.first, !didTrashBuildFolder {
+                    HStack(spacing: 12) {
+                        Image(systemName: "externaldrive.badge.minus")
+                            .foregroundStyle(.blue)
+                        Text(tr("Build-Ordner (\(folder.lastPathComponent), \(BuildWorkFolder.formattedSize(of: folder))) löschen? NSPs bleiben erhalten.",
+                                "Delete build folder (\(folder.lastPathComponent), \(BuildWorkFolder.formattedSize(of: folder)))? NSPs are kept."))
+                            .font(.caption)
+                        Spacer()
+                        Button(tr("In Papierkorb legen", "Move to Trash")) {
+                            if buildManager.trashBuildFolder(folder) {
+                                didTrashBuildFolder = true
+                            }
+                        }
+                        .controlSize(.small)
+                    }
+                    .padding(8)
+                    .background(Color.blue.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
+                } else if didTrashBuildFolder {
+                    HStack(spacing: 8) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                        Text(tr("Build-Ordner in den Papierkorb gelegt – Speicherplatz freigegeben.",
+                                "Build folder moved to Trash – disk space freed."))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
 
                 HStack {
                     Text(isStreaming

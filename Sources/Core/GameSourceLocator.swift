@@ -60,6 +60,18 @@ enum GameSourceLocator {
 
         return nil
     }
+
+    /// Finds the <titleId>_build folder for an installed game, if it exists.
+    static func findBuildFolder(for game: InstalledGame) -> URL? {
+        guard let sourceDir = findSourceDirectory(for: game) else { return nil }
+        let tid = game.titleId
+        let baseTid = SwitchTitleID.baseID(of: tid) ?? tid
+        let candidates = [
+            URL(fileURLWithPath: sourceDir).appendingPathComponent("\(tid)_build"),
+            URL(fileURLWithPath: sourceDir).appendingPathComponent("\(baseTid)_build")
+        ]
+        return candidates.first { FileManager.default.fileExists(atPath: $0.path) }
+    }
 }
 
 enum GameUpdateAction {

@@ -6,6 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ## [Unreleased]
 
 ### Added
+- One-click build folder cleanup (`<titleId>_build`) after successful builds and inside the game status sheet to safely free storage space (up to tens or hundreds of gigabytes) while keeping original NSP archives.
 - Direct game update and recompile actions in the library, game status inspector, and settings sheet.
 - Intelligent pre-flight check determining whether shaders must be recompiled or if a fast App Update is sufficient (preserving cached shaders).
 - `GameSourceLocator` for automatic detection of game source archives (.nsp) and build folders (`<titleId>_build`).

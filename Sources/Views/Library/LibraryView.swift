@@ -27,9 +27,11 @@ struct LibraryView: View {
     @EnvironmentObject private var router: AppRouter
     @EnvironmentObject private var gameSettings: GameSettingsModel
     @EnvironmentObject private var prefs: AppPreferences
+    @EnvironmentObject private var gamepad: GamepadManager
     @State private var searchText = ""
     @State private var isDropTargeted = false
     @State private var filter: LibraryFilter = .all
+    @State private var gridColumnsCount: Int = 3
 
     private var filteredGames: [InstalledGame] {
         var list = library.games
@@ -74,6 +76,9 @@ struct LibraryView: View {
             .navigationSubtitle(subtitleText)
             .searchable(text: $searchText, placement: .toolbar, prompt: tr("Spiele durchsuchen", "Search games"))
             .toolbar { toolbarContent }
+            .overlay(alignment: .bottom) {
+                gamepadHUD
+            }
             .onDrop(of: [.fileURL], isTargeted: $isDropTargeted, perform: handleDrop)
             .overlay {
                 if isDropTargeted {
@@ -89,6 +94,28 @@ struct LibraryView: View {
                         .padding(8)
                         .allowsHitTesting(false)
                 }
+            }
+            .onAppear {
+                if router.selectedGameID == nil, let first = filteredGames.first {
+                    router.selectedGameID = first.id
+                    router.isGamepadSelected = gamepad.isConnected
+                }
+            }
+            .onReceive(gamepad.$isConnected) { connected in
+                if connected {
+                    router.isGamepadSelected = true
+                    if router.selectedGameID == nil, let first = filteredGames.first {
+                        router.selectedGameID = first.id
+                    }
+                }
+            }
+            .onReceive(gamepad.directionSubject) { direction in
+                guard !router.hasActiveSheet else { return }
+                handleGamepadDirection(direction)
+            }
+            .onReceive(gamepad.buttonSubject) { button in
+                guard !router.hasActiveSheet else { return }
+                handleGamepadButton(button)
             }
     }
 
@@ -121,7 +148,7 @@ struct LibraryView: View {
         List(selection: $router.selectedGameID) {
             ForEach(filteredGames) { game in
                 GameRowView(game: game,
-                            onPlay: { GameActions.launch(game) },
+                            onPlay: { GameActions.launch(game, forceFullscreen: router.isGamepadSelected) },
                             onSettings: { openSettings(game) },
                             onShowStatus: { router.statusTargetGame = game })
             }
@@ -133,40 +160,93 @@ struct LibraryView: View {
             }
         } primaryAction: { ids in
             // Double-click / Return launches the game (standard macOS list behavior)
-            if let game = findGame(for: ids) { GameActions.launch(game) }
+            if let game = findGame(for: ids) { GameActions.launch(game, forceFullscreen: router.isGamepadSelected) }
         }
     }
 
     private var gridView: some View {
-        ScrollView {
-            LazyVGrid(
-                columns: [GridItem(.adaptive(minimum: prefs.coverSize.width, maximum: prefs.coverSize.width + 45), spacing: 20)],
-                spacing: 24
-            ) {
-                ForEach(filteredGames) { game in
-                    GameCoverCardView(
-                        game: game,
-                        isSelected: router.selectedGameID == game.id,
-                        coverWidth: prefs.coverSize.width,
-                        onPlay: { GameActions.launch(game) },
-                        onSettings: { openSettings(game) },
-                        onShowStatus: { router.statusTargetGame = game }
-                    )
-                    .contentShape(RoundedRectangle(cornerRadius: 18))
-                    .onTapGesture {
-                        router.selectedGameID = game.id
-                    }
-                    .simultaneousGesture(
-                        TapGesture(count: 2).onEnded {
-                            GameActions.launch(game)
+        GeometryReader { geo in
+            let spacing: CGFloat = 20
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVGrid(
+                        columns: [GridItem(.adaptive(minimum: prefs.coverSize.width, maximum: prefs.coverSize.width + 45), spacing: spacing)],
+                        spacing: 24
+                    ) {
+                        ForEach(filteredGames) { game in
+                            GameCoverCardView(
+                                game: game,
+                                isSelected: router.selectedGameID == game.id,
+                                coverWidth: prefs.coverSize.width,
+                                onPlay: { GameActions.launch(game, forceFullscreen: router.isGamepadSelected) },
+                                onSettings: { openSettings(game) },
+                                onShowStatus: { router.statusTargetGame = game }
+                            )
+                            .id(game.id)
+                            .contentShape(RoundedRectangle(cornerRadius: 18))
+                            .onTapGesture {
+                                router.isGamepadSelected = false
+                                router.selectedGameID = game.id
+                            }
+                            .simultaneousGesture(
+                                TapGesture(count: 2).onEnded {
+                                    GameActions.launch(game, forceFullscreen: router.isGamepadSelected)
+                                }
+                            )
+                            .contextMenu {
+                                gameMenuItems(for: game)
+                            }
                         }
-                    )
-                    .contextMenu {
-                        gameMenuItems(for: game)
+                    }
+                    .padding(20)
+                }
+                .focusable()
+                .onKeyPress(.leftArrow) {
+                    handleGamepadDirection(.left)
+                    return .handled
+                }
+                .onKeyPress(.rightArrow) {
+                    handleGamepadDirection(.right)
+                    return .handled
+                }
+                .onKeyPress(.upArrow) {
+                    handleGamepadDirection(.up)
+                    return .handled
+                }
+                .onKeyPress(.downArrow) {
+                    handleGamepadDirection(.down)
+                    return .handled
+                }
+                .onKeyPress(.return) {
+                    if let game = selectedGame {
+                        GameActions.launch(game, forceFullscreen: router.isGamepadSelected)
+                        return .handled
+                    }
+                    return .ignored
+                }
+                .onKeyPress(.space) {
+                    if let game = selectedGame {
+                        openSettings(game)
+                        return .handled
+                    }
+                    return .ignored
+                }
+                .onChange(of: router.selectedGameID) { _, newID in
+                    if let id = newID {
+                        withAnimation(.easeInOut(duration: 0.15)) {
+                            proxy.scrollTo(id, anchor: .center)
+                        }
                     }
                 }
             }
-            .padding(20)
+            .onChange(of: geo.size.width, initial: true) { _, newWidth in
+                let w = max(100, newWidth - 40)
+                gridColumnsCount = max(1, Int((w + spacing) / (prefs.coverSize.width + spacing)))
+            }
+            .onChange(of: prefs.coverSize) { _, newSize in
+                let w = max(100, geo.size.width - 40)
+                gridColumnsCount = max(1, Int((w + spacing) / (newSize.width + spacing)))
+            }
         }
     }
 
@@ -224,7 +304,7 @@ struct LibraryView: View {
             }
 
             Button {
-                if let game = selectedGame { GameActions.launch(game) }
+                if let game = selectedGame { GameActions.launch(game, forceFullscreen: router.isGamepadSelected) }
             } label: {
                 Label(tr("Spielen", "Play"), systemImage: "play.fill")
             }
@@ -259,7 +339,7 @@ struct LibraryView: View {
 
     @ViewBuilder
     private func gameMenuItems(for game: InstalledGame) -> some View {
-        Button(tr("Spielen", "Play")) { GameActions.launch(game) }
+        Button(tr("Spielen", "Play")) { GameActions.launch(game, forceFullscreen: router.isGamepadSelected) }
         Button(tr("Spiel-Einstellungen …", "Game Settings…")) { openSettings(game) }
         Button(tr("nxnative-Status & Neukompilierung …", "nxnative Status & Recompilation…")) {
             router.statusTargetGame = game
@@ -365,5 +445,148 @@ struct LibraryView: View {
             }
         }
         return true
+    }
+
+    // MARK: - Gamepad & Keyboard Navigation
+
+    private func handleGamepadDirection(_ direction: GamepadDirection) {
+        guard !filteredGames.isEmpty else { return }
+
+        guard let currentID = router.selectedGameID,
+              let currentIndex = filteredGames.firstIndex(where: { $0.id == currentID }) else {
+            router.selectedGameID = filteredGames[0].id
+            router.isGamepadSelected = true
+            return
+        }
+
+        let targetIndex: Int
+        let columns = max(1, gridColumnsCount)
+
+        switch direction {
+        case .left:
+            targetIndex = max(0, currentIndex - 1)
+        case .right:
+            targetIndex = min(filteredGames.count - 1, currentIndex + 1)
+        case .up:
+            if prefs.libraryViewMode == .list {
+                targetIndex = max(0, currentIndex - 1)
+            } else {
+                targetIndex = max(0, currentIndex - columns)
+            }
+        case .down:
+            if prefs.libraryViewMode == .list {
+                targetIndex = min(filteredGames.count - 1, currentIndex + 1)
+            } else {
+                targetIndex = min(filteredGames.count - 1, currentIndex + columns)
+            }
+        }
+
+        if targetIndex != currentIndex {
+            router.selectedGameID = filteredGames[targetIndex].id
+            router.isGamepadSelected = true
+        }
+    }
+
+    private func handleGamepadButton(_ button: GamepadButton) {
+        switch button {
+        case .a:
+            if let game = selectedGame {
+                GameActions.launch(game, forceFullscreen: true)
+            } else if let first = filteredGames.first {
+                router.selectedGameID = first.id
+                router.isGamepadSelected = true
+            }
+        case .b:
+            if !searchText.isEmpty {
+                searchText = ""
+            }
+        case .x:
+            if let game = selectedGame {
+                openSettings(game)
+            }
+        case .y:
+            if let game = selectedGame {
+                router.statusTargetGame = game
+            }
+        case .leftShoulder:
+            if library.updateAvailableCount > 0 {
+                cycleFilter(forward: false)
+            } else {
+                cycleCoverSize(forward: false)
+            }
+        case .rightShoulder:
+            if library.updateAvailableCount > 0 {
+                cycleFilter(forward: true)
+            } else {
+                cycleCoverSize(forward: true)
+            }
+        case .leftTrigger, .rightTrigger:
+            prefs.libraryViewMode = (prefs.libraryViewMode == .grid ? .list : .grid)
+        case .menu:
+            if let game = selectedGame {
+                openSettings(game)
+            }
+        }
+    }
+
+    private func cycleFilter(forward: Bool) {
+        let cases = LibraryFilter.allCases
+        guard let currentIdx = cases.firstIndex(of: filter) else { return }
+        let nextIdx = forward ? (currentIdx + 1) % cases.count : (currentIdx - 1 + cases.count) % cases.count
+        filter = cases[nextIdx]
+    }
+
+    private func cycleCoverSize(forward: Bool) {
+        let sizes = CoverSize.allCases
+        guard let idx = sizes.firstIndex(of: prefs.coverSize) else { return }
+        let nextIdx = forward ? (idx + 1) % sizes.count : (idx - 1 + sizes.count) % sizes.count
+        prefs.coverSize = sizes[nextIdx]
+    }
+
+    @ViewBuilder
+    private var gamepadHUD: some View {
+        if gamepad.isConnected {
+            HStack(spacing: 14) {
+                HStack(spacing: 6) {
+                    Image(systemName: "gamecontroller.fill")
+                        .foregroundStyle(Color.accentColor)
+                    Text(gamepad.controllerName)
+                        .font(.caption.weight(.semibold))
+                }
+
+                Divider()
+                    .frame(height: 12)
+
+                gamepadHintPill(button: "A", label: tr("Spielen (Vollbild)", "Play (Fullscreen)"))
+                gamepadHintPill(button: "X", label: tr("Einstellungen", "Settings"))
+                gamepadHintPill(button: "Y", label: tr("Status", "Status"))
+                if library.updateAvailableCount > 0 {
+                    gamepadHintPill(button: "L/R", label: tr("Filter", "Filter"))
+                } else {
+                    gamepadHintPill(button: "L/R", label: tr("Größe", "Size"))
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 7)
+            .background(.ultraThinMaterial, in: Capsule())
+            .overlay(Capsule().strokeBorder(Color.primary.opacity(0.12), lineWidth: 1))
+            .shadow(color: Color.black.opacity(0.18), radius: 8, y: 3)
+            .padding(.bottom, 12)
+            .transition(.move(edge: .bottom).combined(with: .opacity))
+        }
+    }
+
+    private func gamepadHintPill(button: String, label: String) -> some View {
+        HStack(spacing: 5) {
+            Text(button)
+                .font(.system(size: 10, weight: .bold, design: .rounded))
+                .padding(.horizontal, 5)
+                .padding(.vertical, 1.5)
+                .background(Color.primary.opacity(0.12))
+                .clipShape(Capsule())
+            Text(label)
+                .font(.caption2.weight(.medium))
+                .foregroundStyle(.secondary)
+        }
     }
 }

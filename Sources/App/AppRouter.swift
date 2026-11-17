@@ -8,6 +8,7 @@ import AppKit
 final class AppRouter: ObservableObject {
     @Published var selection: SidebarItem? = .library
     @Published var selectedGameID: InstalledGame.ID?
+    @Published var isGamepadSelected = false
 
     @Published var showingGameSettings = false
     @Published var showingUpdateSheet = false
@@ -15,16 +16,41 @@ final class AppRouter: ObservableObject {
     @Published var showingImportSheet = false
     @Published var showingSetup = false
     @Published var statusTargetGame: InstalledGame? = nil
+
+    var hasActiveSheet: Bool {
+        showingGameSettings ||
+        showingUpdateSheet ||
+        showingLiveLog ||
+        showingImportSheet ||
+        showingSetup ||
+        statusTargetGame != nil
+    }
+
+    func dismissTopSheet() {
+        if showingGameSettings {
+            showingGameSettings = false
+        } else if statusTargetGame != nil {
+            statusTargetGame = nil
+        } else if showingUpdateSheet {
+            showingUpdateSheet = false
+        } else if showingLiveLog {
+            showingLiveLog = false
+        } else if showingImportSheet {
+            showingImportSheet = false
+        } else if showingSetup {
+            showingSetup = false
+        }
+    }
 }
 
 // MARK: - Game actions (used by views and menu commands)
 
 enum GameActions {
-    static func launch(_ game: InstalledGame) {
-        launch(appPath: game.path, titleId: game.titleId)
+    static func launch(_ game: InstalledGame, forceFullscreen: Bool = false) {
+        launch(appPath: game.path, titleId: game.titleId, forceFullscreen: forceFullscreen)
     }
 
-    static func launch(appPath: String, titleId: String? = nil) {
+    static func launch(appPath: String, titleId: String? = nil, forceFullscreen: Bool = false) {
         let tid = titleId ?? GameBundleInfo(appPath: appPath)?.titleId
         var skipLauncher = AppPreferences.shared.skipGameLauncher
         if let tid = tid {
@@ -36,10 +62,24 @@ enum GameActions {
 
         let url = URL(fileURLWithPath: appPath)
         let config = NSWorkspace.OpenConfiguration()
+        var env: [String: String] = [:]
+        var args: [String] = []
+
         if skipLauncher {
-            config.arguments = ["--no-launcher"]
-            config.environment = ["DM_LAUNCHER": "0"]
+            args.append("--no-launcher")
+            env["DM_LAUNCHER"] = "0"
         }
+        if forceFullscreen {
+            env["DM_FULLSCREEN"] = "1"
+        }
+
+        if !args.isEmpty {
+            config.arguments = args
+        }
+        if !env.isEmpty {
+            config.environment = env
+        }
+
         // An approved save is brought up to date first, so the game starts from the newest state.
         SaveSyncManager.shared.syncApproved(titleId: tid) {
             NSWorkspace.shared.openApplication(at: url, configuration: config) { _, error in

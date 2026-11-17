@@ -5,6 +5,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.4.0] – 2026-11-17
+
+### Added
+- **Gamepad Navigation for Cover Grid View & Library**:
+  - Full support for navigating the cover/icon grid view and list view with game controllers (Nintendo Switch Pro Controller, Joy-Cons, Xbox, PlayStation DualSense/DualShock, and MFi gamepads) via Apple's GameController framework.
+  - Responsive 2D spatial navigation with D-Pad and analog thumbstick, debounced auto-repeat, and smooth auto-scrolling to selected items via `ScrollViewReader`.
+  - Dedicated controller actions: `(A)` Launch selected game in fullscreen (`DM_FULLSCREEN=1`), `(X)` Open game settings, `(Y)` Open nxnative status & recompilation sheet, `(B)` Dismiss modal sheets or clear search, `(LB/RB)` Cycle library filters or cover sizes, `(LT/RT)` Toggle view mode between Grid and List.
+  - Automatic fullscreen: Games selected or launched via gamepad automatically open in fullscreen for a seamless TV/couch console experience.
+  - Enhanced visual selection: active cover cards lift with an accent glow, 3px border, and smooth spring physics.
+  - Floating Gamepad HUD pill docked at the bottom displaying active controller model and button hints whenever a gamepad is connected.
+  - Keyboard navigation (Arrow keys, Return to launch, Space for settings) in Cover Grid View.
+  - Gamepad connection status inspector in General Settings.
+
 ## [1.3.1] – 2026-11-17
 
 ### Fixed

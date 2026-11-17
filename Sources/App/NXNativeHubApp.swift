@@ -19,6 +19,7 @@ struct NXNativeHubApp: App {
     @StateObject private var buildMonitor = ActiveBuildMonitor()
     @StateObject private var importManager = ImportBatchManager()
     @StateObject private var setupChecker = SetupChecker()
+    @StateObject private var gamepad = GamepadManager.shared
 
     var body: some Scene {
         Window("NXNative Hub", id: "main") {
@@ -33,6 +34,7 @@ struct NXNativeHubApp: App {
                 .environmentObject(buildMonitor)
                 .environmentObject(importManager)
                 .environmentObject(setupChecker)
+                .environmentObject(gamepad)
         }
         .defaultSize(width: 960, height: 680)
         .commands {
@@ -54,6 +56,7 @@ struct NXNativeHubApp: App {
                 .environmentObject(updater)
                 .environmentObject(importManager)
                 .environmentObject(setupChecker)
+                .environmentObject(gamepad)
         }
     }
 }

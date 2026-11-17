@@ -16,6 +16,7 @@ The interface is fully localized in **English** and **German**.
 
 ### 🎮 Centralized Game Library
 - **Cover Grid & List Views**: Switch seamlessly between a detailed List view and a rich Cover Grid view with customizable artwork sizes (Small, Medium, Large), hover controls, and status badges.
+- **Full Gamepad Navigation**: Navigate the cover grid and list views with Nintendo Switch Pro Controller, Joy-Cons, Xbox, PlayStation DualSense/DualShock, and MFi gamepads. Selected games automatically launch in fullscreen for a couch/TV experience, with on-screen button hints and smooth 2D navigation.
 - **Catalog & Overview**: View all converted titles with application version, file size, build details, and active runtime configuration.
 - **Smart Filtering**: Filter by favorites or directly target titles with pending updates using dedicated status tabs (**All**, **Updates**, **App Updates**, **Recompile**, **Favorites**).
 - **Instant Launch**: Double-click or press `⌘↩` to launch titles immediately.

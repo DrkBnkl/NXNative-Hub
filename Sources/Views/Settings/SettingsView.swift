@@ -27,6 +27,7 @@ struct GeneralSettingsView: View {
     @EnvironmentObject private var updater: UpdateManager
     @EnvironmentObject private var setupChecker: SetupChecker
     @EnvironmentObject private var importManager: ImportBatchManager
+    @EnvironmentObject private var gamepad: GamepadManager
 
     var body: some View {
         Form {
@@ -49,6 +50,25 @@ struct GeneralSettingsView: View {
             } footer: {
                 Text(tr("Spiele werden direkt mit den gewählten Einstellungen gestartet, ohne das nxnative-Startfenster zu öffnen. Die Spielsprache wird für neue Builds und den Stapel-Import verwendet.",
                         "Games launch directly with configured settings without opening the nxnative start window. The game language is used for new builds and batch imports."))
+            }
+
+            Section {
+                HStack {
+                    Label(tr("Controller-Status", "Controller Status"), systemImage: "gamecontroller")
+                    Spacer()
+                    if gamepad.isConnected {
+                        Label(gamepad.controllerName, systemImage: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                    } else {
+                        Text(tr("Kein Controller verbunden", "No controller connected"))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            } header: {
+                Text(tr("Gamepad / Controller", "Gamepad / Controller"))
+            } footer: {
+                Text(tr("Unterstützt Switch Pro Controller, Joy-Cons, Xbox-, PlayStation- und MFi-Gamepads zur Navigation in der Cover- und Listenansicht.",
+                        "Supports Switch Pro Controller, Joy-Cons, Xbox, PlayStation and MFi gamepads to navigate in cover and list views."))
             }
 
             Section {

@@ -50,7 +50,7 @@ struct AppCommands: Commands {
 
         CommandMenu(LocalizedStringKey(tr("Spiel", "Game"))) {
             Button(tr("Spielen", "Play")) {
-                if let game = selectedGame { GameActions.launch(game) }
+                if let game = selectedGame { GameActions.launch(game, forceFullscreen: router.isGamepadSelected) }
             }
             .keyboardShortcut(.return, modifiers: .command)
             .disabled(selectedGame == nil)

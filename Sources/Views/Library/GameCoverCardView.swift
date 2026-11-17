@@ -29,9 +29,9 @@ struct GameCoverCardView: View {
                                 .strokeBorder(isSelected ? Color.accentColor : Color.primary.opacity(0.1),
                                               lineWidth: isSelected ? 3 : 1)
                         )
-                        .shadow(color: Color.black.opacity(isHovered ? 0.32 : 0.12),
-                                radius: isHovered ? 10 : 4,
-                                y: isHovered ? 6 : 2)
+                        .shadow(color: isSelected ? Color.accentColor.opacity(0.55) : Color.black.opacity(isHovered ? 0.32 : 0.12),
+                                radius: isSelected ? 12 : (isHovered ? 10 : 4),
+                                y: isHovered ? 6 : (isSelected ? 3 : 2))
 
                     // Hover Action Overlay
                     if isHovered {
@@ -133,9 +133,14 @@ struct GameCoverCardView: View {
         .padding(8)
         .background(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(isSelected ? Color.accentColor.opacity(0.12) : (isHovered ? Color.secondary.opacity(0.08) : Color.clear))
+                .fill(isSelected ? Color.accentColor.opacity(0.14) : (isHovered ? Color.secondary.opacity(0.08) : Color.clear))
         )
-        .scaleEffect(isHovered ? 1.02 : 1.0)
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(isSelected ? Color.accentColor.opacity(0.35) : Color.clear, lineWidth: 1)
+        )
+        .scaleEffect(isSelected ? 1.04 : (isHovered ? 1.02 : 1.0))
+        .animation(.spring(response: 0.22, dampingFraction: 0.75), value: isSelected)
         .animation(.spring(response: 0.22, dampingFraction: 0.75), value: isHovered)
         .onHover { isHovered = $0 }
     }

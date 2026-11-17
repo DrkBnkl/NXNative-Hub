@@ -15,6 +15,7 @@ struct ContentView: View {
     @EnvironmentObject private var builderForm: BuilderFormModel
     @EnvironmentObject private var gameSettings: GameSettingsModel
     @EnvironmentObject private var setupChecker: SetupChecker
+    @EnvironmentObject private var gamepad: GamepadManager
     @ObservedObject private var lang = LanguageManager.shared
 
     var body: some View {
@@ -68,6 +69,13 @@ struct ContentView: View {
         .sheet(item: $router.statusTargetGame) { game in
             withEnvironment(GameStatusSheet(game: game))
         }
+        .onReceive(gamepad.buttonSubject) { button in
+            if button == .b && router.hasActiveSheet {
+                router.dismissTopSheet()
+            } else if router.selection == .builder && (button == .b || button == .leftShoulder) {
+                router.selection = .library
+            }
+        }
     }
 
     /// Passes all state objects to sheets explicitly (independent of whether the
@@ -84,6 +92,7 @@ struct ContentView: View {
             .environmentObject(buildMonitor)
             .environmentObject(importManager)
             .environmentObject(setupChecker)
+            .environmentObject(gamepad)
     }
 
     @ViewBuilder

@@ -68,6 +68,7 @@ final class ActiveBuildMonitor: ObservableObject {
         guard !relevant.isEmpty else { return nil }
 
         var mainPid: Int32 = 0
+        var buildPids: [Int32] = []
         var gameFolder = ""
         var isCompilingShaders = false
         var isLinkingPipelines = false
@@ -76,6 +77,7 @@ final class ActiveBuildMonitor: ObservableObject {
             if line.contains("build_ipa_from_nsp.py") {
                 if let pid = line.split(separator: " ", maxSplits: 1).first.flatMap({ Int32($0) }) {
                     mainPid = pid
+                    buildPids.append(pid)
                 }
                 if let range = line.range(of: "build_ipa_from_nsp.py ") {
                     let after = line[range.upperBound...]
@@ -123,7 +125,10 @@ final class ActiveBuildMonitor: ObservableObject {
                 stageDesc = tr("RomFS-/ExeFS-Daten werden verarbeitet", "Processing RomFS / ExeFS data")
             }
 
-            latestLogPath = newestBuildLog(buildDir: buildDir)
+            // The build's own output first (e.g. `… | tee build.log` in Terminal); otherwise the newest
+            // log written since the build started, so an earlier build's log is never shown.
+            latestLogPath = outputLogFile(of: buildPids)
+                ?? newestBuildLog(buildDir: buildDir, notBefore: startDate(of: mainPid))
 
             if let logPath = latestLogPath {
                 let rawLines = tailLines(of: logPath, maxBytes: 32_768)
@@ -183,8 +188,60 @@ final class ActiveBuildMonitor: ObservableObject {
         return total > 0 ? total : nil
     }
 
-    /// Newest log file that recognizably belongs to a build.
-    private static func newestBuildLog(buildDir: String) -> String? {
+    /// The file the build writes its output to: its stdout when that is a file (`> build.log`),
+    /// or the file of the `tee` reading its stdout pipe (`| tee build.log`).
+    private static func outputLogFile(of pids: [Int32]) -> String? {
+        guard !pids.isEmpty else { return nil }
+        let own = lsofFiles(["-a", "-p", pids.map(String.init).joined(separator: ","), "-d", "1"])
+        if let file = own.first(where: { $0.type == "REG" }) { return file.name }
+        let peers = Set(own.filter { $0.type == "PIPE" }.compactMap { $0.name.hasPrefix("->") ? String($0.name.dropFirst(2)) : nil })
+        guard !peers.isEmpty else { return nil }
+        let tees = lsofFiles(["-c", "tee"])
+        let readers = Set(tees.filter { $0.fd == "0" && $0.type == "PIPE" && peers.contains($0.device) }.map(\.pid))
+        return tees.first { readers.contains($0.pid) && $0.type == "REG" && $0.access.contains("w") }?.name
+    }
+
+    private struct OpenFile {
+        var pid = "", fd = "", access = "", type = "", device = "", name = ""
+    }
+
+    /// Open files from `lsof -F` (one field per line: p pid, f fd, a access, t type, d device, n name).
+    private static func lsofFiles(_ args: [String]) -> [OpenFile] {
+        let result = CommandRunner.run("/usr/sbin/lsof", ["-w", "-F", "pfatdn"] + args)
+        var files: [OpenFile] = []
+        var pid = ""
+        for line in result.output.split(separator: "\n") {
+            guard let tag = line.first else { continue }
+            let value = String(line.dropFirst())
+            switch tag {
+            case "p": pid = value
+            case "f": files.append(OpenFile(pid: pid, fd: value))
+            case "a": if !files.isEmpty { files[files.count - 1].access = value }
+            case "t": if !files.isEmpty { files[files.count - 1].type = value }
+            case "d": if !files.isEmpty { files[files.count - 1].device = value }
+            case "n": if !files.isEmpty { files[files.count - 1].name = value }
+            default: break
+            }
+        }
+        return files
+    }
+
+    /// When the process started, from `ps -o etime` (`[[dd-]hh:]mm:ss`).
+    private static func startDate(of pid: Int32) -> Date? {
+        guard pid > 0 else { return nil }
+        let text = CommandRunner.run("/bin/ps", ["-o", "etime=", "-p", String(pid)]).output
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let dayParts = text.split(separator: "-")
+        guard let clock = dayParts.last else { return nil }
+        let days = dayParts.count == 2 ? Int(dayParts[0]) : 0
+        let units = clock.split(separator: ":").map { Int($0) }
+        guard let days, !units.isEmpty, units.count <= 3, !units.contains(where: { $0 == nil }) else { return nil }
+        let seconds = units.reduce(0) { $0 * 60 + $1! } + days * 86_400
+        return Date().addingTimeInterval(-TimeInterval(seconds))
+    }
+
+    /// Newest log file that recognizably belongs to a build and was written since `notBefore`.
+    private static func newestBuildLog(buildDir: String, notBefore: Date?) -> String? {
         let fm = FileManager.default
         var candidates: [String] = []
         if fm.fileExists(atPath: NXPaths.liveLogPath) {
@@ -207,7 +264,8 @@ final class ActiveBuildMonitor: ObservableObject {
             try? handle.close()
 
             let belongsToBuild = markers.contains { sample.contains($0) } || path.contains("build_console")
-            if belongsToBuild && modified > (newest?.date ?? .distantPast) {
+            let current = notBefore.map { modified >= $0.addingTimeInterval(-5) } ?? true
+            if belongsToBuild && current && modified > (newest?.date ?? .distantPast) {
                 newest = (path, modified)
             }
         }

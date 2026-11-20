@@ -5,6 +5,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.4.2] – 2026-11-20
+
 ### Changed
 - Starting a build with less free space than estimated now asks first ("Build Anyway" / "Cancel") instead of only showing a warning; the direct update and recompile action in the library asks the same.
 

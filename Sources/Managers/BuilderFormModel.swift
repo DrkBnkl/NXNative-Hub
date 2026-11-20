@@ -202,9 +202,23 @@ final class BuilderFormModel: ObservableObject {
                      appName: appName)
     }
 
-    /// Starts the build (used by the toolbar button and the ⌘R menu command).
-    func startBuild(manager: BuildManager, monitor: ActiveBuildMonitor, prefs: AppPreferences, library: GameLibraryManager) {
+    /// Set when a build was asked for while the estimate says the disk is too full; the builder
+    /// page asks whether to build anyway.
+    @Published var lowSpaceConfirmationPending = false
+
+    /// Starts the build (used by the toolbar button and the ⌘R menu command). When the free
+    /// space is below the estimate, it asks first instead (`lowSpaceConfirmationPending`);
+    /// `ignoringLowSpace` is the answer "build anyway".
+    func startBuild(manager: BuildManager, monitor: ActiveBuildMonitor, prefs: AppPreferences, library: GameLibraryManager,
+                    ignoringLowSpace: Bool = false) {
         guard canStart(manager: manager, monitor: monitor, prefs: prefs) else { return }
+        if !ignoringLowSpace {
+            updateBuildEstimates()   // the space may have been freed since the folder was chosen
+            if let space = diskSpace, !space.isSufficient {
+                lowSpaceConfirmationPending = true
+                return
+            }
+        }
         manager.startBuild(options: makeOptions(prefs: prefs)) { [weak self] in
             library.refreshLibrary()
             monitor.checkActiveBuild()

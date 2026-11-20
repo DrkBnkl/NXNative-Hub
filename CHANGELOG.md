@@ -5,6 +5,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+- Starting a build with less free space than estimated now asks first ("Build Anyway" / "Cancel") instead of only showing a warning.
+
 ## [1.4.1] – 2026-11-17
 
 ### Fixed

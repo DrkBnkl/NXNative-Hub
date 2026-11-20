@@ -5,6 +5,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.6.0] – 2026-11-21
+
 ### Added
 - Game icons are kept: the library backs up each installed app's icon to `~/Library/Application Support/nxnative/<title ID>/icon.png`, and every build the app starts (builder, direct update, batch import) passes it as `--fallback-icon`. An update from a NUP or dump without an icon keeps the game's icon instead of a blank one.
 - Icon search at Nintendo: when neither the game files nor an installed app have an icon, NXNative Hub loads the square store image by the title ID (`ec.nintendo.com/apps/<title ID>`), Switch and Switch 2. Only the title ID is sent; can be turned off in Settings.

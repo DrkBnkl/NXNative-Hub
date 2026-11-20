@@ -146,6 +146,7 @@ final class BuilderFormModel: ObservableObject {
     }
 
     private func updateBuildEstimates() {
+        NintendoIconSearch.ensureIcon(forSource: gameDirectory)   // ready as the fallback icon when the build starts
         hasPreviousBuild = !BuildWorkFolder.find(in: workFolder).isEmpty
         diskSpace = DiskSpaceEstimate.make(gameBytes: detectedFiles.reduce(0) { $0 + $1.sizeBytes }, folder: workFolder)
     }
@@ -203,14 +204,15 @@ final class BuilderFormModel: ObservableObject {
             && (!needsProdKeys || !prefs.prodKeysPath.isEmpty)
     }
 
-    func makeOptions(prefs: AppPreferences) -> BuildOptions {
+    func makeOptions(prefs: AppPreferences, installedApps: [InstalledGame] = []) -> BuildOptions {
         BuildOptions(gameDirectory: gameDirectory,
                      prodKeysPath: needsProdKeys ? prefs.prodKeysPath : "",
                      platform: platform,
                      language: language,
                      showFps: showFps,
                      keepExtracted: keepExtracted,
-                     appName: appName)
+                     appName: appName,
+                     fallbackIcon: GameIconStore.fallbackIcon(forSource: gameDirectory, installedApps: installedApps))
     }
 
     /// Measures the free space again (it may have been freed since the folder was chosen).
@@ -235,7 +237,7 @@ final class BuilderFormModel: ObservableObject {
                 return
             }
         }
-        manager.startBuild(options: makeOptions(prefs: prefs)) { [weak self] in
+        manager.startBuild(options: makeOptions(prefs: prefs, installedApps: library.games)) { [weak self] in
             library.refreshLibrary()
             monitor.checkActiveBuild()
             self?.scanGameFolder()   // picks up the new work folder and the free space

@@ -185,7 +185,7 @@ enum GameUpdateAction {
             }
         }
 
-        let options = builderForm.makeOptions(prefs: prefs)
+        let options = builderForm.makeOptions(prefs: prefs, installedApps: library.games)
         buildManager.startBuild(options: options) {
             if buildManager.buildSucceeded, let newAppPath = buildManager.createdArtifactPath {
                 let fm = FileManager.default

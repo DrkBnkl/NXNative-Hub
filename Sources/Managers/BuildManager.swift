@@ -10,6 +10,9 @@ struct BuildOptions {
     var showFps: Bool
     var keepExtracted: Bool
     var appName: String
+    /// The icon the app gets only when the game carries none (`--fallback-icon`): the stored copy
+    /// of the installed app's icon, so an update from a NUP without one keeps it.
+    var fallbackIcon: String? = nil
 
     /// Command line for build_ipa_from_nsp.py. Without prod.keys (Switch 2 NUPs and dumps
     /// need none) `-k` is left out; the script would otherwise ask for it.
@@ -24,6 +27,7 @@ struct BuildOptions {
         args.append(keepExtracted ? "--keep-extracted" : "--no-keep-extracted")
         let name = appName.trimmingCharacters(in: .whitespaces)
         if !name.isEmpty { args += ["--app-name", name] }
+        if let icon = fallbackIcon, FileManager.default.fileExists(atPath: icon) { args += ["--fallback-icon", icon] }
         return args
     }
 }

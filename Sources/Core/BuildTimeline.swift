@@ -294,6 +294,7 @@ struct BuildTimeline: Equatable {
             || lower.contains("traceback") || lower.hasPrefix("fatal") {
             return .error
         }
+        if lower.hasPrefix("no game icon") && lower.contains("blank") { return .warning }
         if text.hasPrefix("⚠") || text.contains("[YELLOW]") || lower.hasPrefix("warning") || lower.hasPrefix("[warnung]") || lower.hasPrefix("[warning]") {
             return .warning
         }

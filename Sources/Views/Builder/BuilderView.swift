@@ -58,6 +58,20 @@ struct BuilderView: View {
         .formStyle(.grouped)
         .navigationTitle(SidebarItem.builder.title)
         .toolbar { toolbarContent }
+        .alert(tr("Zu wenig Speicher frei", "Not enough disk space"),
+               isPresented: $form.lowSpaceConfirmationPending) {
+            Button(tr("Trotzdem bauen", "Build Anyway"), role: .destructive) {
+                form.startBuild(manager: manager, monitor: buildMonitor, prefs: prefs, library: library,
+                                ignoringLowSpace: true)
+            }
+            Button(tr("Abbrechen", "Cancel"), role: .cancel) {}
+        } message: {
+            Text(lowSpaceMessage)
+        }
+    }
+
+    private var lowSpaceMessage: String {
+        form.diskSpace?.confirmationMessage(hasPreviousBuild: form.hasPreviousBuild) ?? ""
     }
 
     // MARK: Sections

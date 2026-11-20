@@ -5,6 +5,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+- Starting a build with less free space than estimated now asks first ("Build Anyway" / "Cancel") instead of only showing a warning; the direct update and recompile action in the library asks the same.
+
+### Fixed
+- The live log of a build started in Terminal shows that build's output (also with `| tee file.log` or `> file.log`) instead of an earlier build's log.
+
 ## [1.4.1] – 2026-11-17
 
 ### Fixed

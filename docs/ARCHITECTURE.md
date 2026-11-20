@@ -27,7 +27,7 @@ graph TD
 | **Views** (`Sources/Views`) | Declarative SwiftUI views, sheets, forms, and status inspectors | `ContentView`, `LibraryView`, `BuilderView`, `ImportView`, `GameSettingsSheet`, `GameStatusSheet`, `SettingsView` |
 | **Managers** (`Sources/Managers`) | Core application state, business logic, asynchronous coordination (`ObservableObject`) | `GameLibraryManager`, `BuildManager`, `ImportBatchManager`, `UpdateManager`, `ActiveBuildMonitor`, `GameSettingsModel`, `SetupChecker`, `AppPreferences`, `GameDiagnostics` |
 | **Models** (`Sources/Models`) | Immutable models, data structures, status evaluation | `InstalledGame`, `TargetPlatform`, `ProfileDatabase`, `GameMetaDetector`, `GameUpdateStatus` |
-| **Core** (`Sources/Core`) | Process execution, parsing, filesystem paths, localization, update calculations | `NXPaths`, `CommandRunner`, `StreamingProcess`, `BuildEvent`, `BuildFailureTracker`, `LiveLogWriter`, `EnvFile`, `LauncherSettingsList`, `SavedChoices`, `ProdKeysFile`, `Notifier`, `SwitchTitleID`, `NUPReader`, `DumpFolderReader`, `GameSourceKind`, `GameUpdateChecker`, `GameSourceLocator`, `BuildWorkFolder`, `tr()` |
+| **Core** (`Sources/Core`) | Process execution, parsing, filesystem paths, localization, update calculations | `NXPaths`, `CommandRunner`, `StreamingProcess`, `BuildEvent`, `BuildTimeline`, `BuildFailureTracker`, `LiveLogWriter`, `EnvFile`, `LauncherSettingsList`, `SavedChoices`, `ProdKeysFile`, `Notifier`, `SwitchTitleID`, `NUPReader`, `DumpFolderReader`, `GameSourceKind`, `GameUpdateChecker`, `GameSourceLocator`, `BuildWorkFolder`, `tr()` |
 
 ---
 
@@ -49,6 +49,7 @@ All external processes are executed with explicit argument arrays—never interp
 | `scripts/build_ipa_from_nsp.py` | `BuildManager`, `ImportBatchManager` | `StreamingProcess` | Compiles game dump to `.app` bundle, reporting `--progress json` events |
 | `git`, `pip` | `UpdateManager` | `CommandRunner` | Fetches updates and installs dependency packages |
 | `ps` | `ActiveBuildMonitor` | `CommandRunner` | Polls active processes every 2.5 seconds to track background or Terminal-initiated builds |
+| `lsof` | `ActiveBuildMonitor` | `CommandRunner` | Finds the file a Terminal build writes its output to (`> file` or `\| tee file`); `LogFollower` reads it incrementally into a `BuildTimeline` for the live log |
 | `xcodebuild`, `xcrun metal`, `brew` | `SetupChecker` | `CommandRunner` | Verifies and provisions developer toolchain components |
 | `ditto` | `SaveGameImporter` | `CommandRunner` | Safely extracts save archives preserving attributes |
 | `scripts/bug_report.py` | `GameDiagnostics` | `CommandRunner` | Bundles game logs and system specs into diagnostic zips |

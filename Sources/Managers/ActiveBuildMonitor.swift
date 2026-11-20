@@ -17,6 +17,49 @@ struct ActiveBuildInfo: Equatable, Identifiable {
     let compiledShadersCount: Int?
     let latestLogFile: String?
     let recentLogLines: [String]
+    /// Stages, progress and log entries read from `latestLogFile`.
+    var timeline: BuildTimeline?
+}
+
+/// Reads a growing log file from where the last read stopped and feeds a timeline.
+/// Only used on the monitor's serial queue.
+private final class LogFollower {
+    private var path: String?
+    private var offset: UInt64 = 0
+    private var partial = Data()
+    private(set) var timeline = BuildTimeline()
+
+    /// Larger logs are read from this many bytes before their end (a JSON log of a long build).
+    private static let maxInitialRead: UInt64 = 16 << 20
+
+    func update(path newPath: String) -> BuildTimeline {
+        guard let handle = FileHandle(forReadingAtPath: newPath) else { return timeline }
+        defer { try? handle.close() }
+        let size = (try? handle.seekToEnd()) ?? 0
+        var skipFirstLine = false
+        if newPath != path || size < offset {   // another file, or the file was truncated
+            path = newPath
+            timeline = BuildTimeline()
+            partial = Data()
+            offset = size > Self.maxInitialRead ? size - Self.maxInitialRead : 0
+            skipFirstLine = offset > 0
+        }
+        guard size > offset else { return timeline }
+        try? handle.seek(toOffset: offset)
+        var data = partial + ((try? handle.read(upToCount: Int(size - offset))) ?? Data())
+        offset = size
+        if skipFirstLine, let nl = data.firstIndex(of: 0x0A) { data = data[(nl + 1)...] }
+        // Keep an unfinished last line for the next read.
+        if let lastNL = data.lastIndex(of: 0x0A) {
+            partial = Data(data[(lastNL + 1)...])
+            data = data[..<lastNL]
+        } else {
+            partial = Data(data); return timeline
+        }
+        let text = String(decoding: data, as: UTF8.self).replacingOccurrences(of: "\r", with: "\n")
+        for line in text.split(separator: "\n") { timeline.consume(String(line)) }
+        return timeline
+    }
 }
 
 final class ActiveBuildMonitor: ObservableObject {
@@ -24,6 +67,7 @@ final class ActiveBuildMonitor: ObservableObject {
 
     private var timer: Timer?
     private var isChecking = false
+    private static let follower = LogFollower()
     private let queue = DispatchQueue(label: "org.nxnative.buildMonitor", qos: .utility)
 
     init() {
@@ -163,6 +207,8 @@ final class ActiveBuildMonitor: ObservableObject {
             }
         }
 
+        let timeline = latestLogPath.map { follower.update(path: $0) }
+
         return ActiveBuildInfo(pid: mainPid,
                                gameName: gameName,
                                gameDirectory: gameFolder,
@@ -170,7 +216,8 @@ final class ActiveBuildMonitor: ObservableObject {
                                currentStageDescription: stageDesc,
                                compiledShadersCount: shaderCount,
                                latestLogFile: latestLogPath,
-                               recentLogLines: recentLines)
+                               recentLogLines: recentLines,
+                               timeline: timeline)
     }
 
     private static var pipelineStageText: String {

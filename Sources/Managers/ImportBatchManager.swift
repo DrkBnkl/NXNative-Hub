@@ -42,6 +42,8 @@ final class ImportBatchManager: ObservableObject {
     @Published private(set) var currentStageText = ""
     @Published private(set) var progressPercentage: Double = 0.0
     @Published private(set) var logs: [String] = []
+    /// Stages, progress and log entries of the game being converted, for the live log.
+    @Published private(set) var timeline = BuildTimeline()
     @Published private(set) var conversionResults: [String: Bool] = [:]
     @Published private(set) var wasCancelled = false
     @Published var isFinished = false
@@ -223,6 +225,9 @@ final class ImportBatchManager: ObservableObject {
         currentGameFolder = game.folderURL
         currentGameName = game.name
         currentStageText = tr("Umwandlung wird gestartet …", "Starting conversion…")
+        timeline = BuildTimeline()
+        timeline.note(tr("Spiel \(currentGameIndex + 1) von \(activeBatchGames.count): \(game.name)",
+                         "Game \(currentGameIndex + 1) of \(activeBatchGames.count): \(game.name)"))
         progressPercentage = Double(currentGameIndex) / Double(max(1, total))
 
         appendLog("")
@@ -246,6 +251,7 @@ final class ImportBatchManager: ObservableObject {
         failureTracker = BuildFailureTracker()
         runner.onStderrLine = { [weak self] line in
             self?.failureTracker.noteStderr(line)
+            self?.timeline.consumeStderr(line)
             self?.appendLog("[stderr] \(line.trimmingCharacters(in: .whitespacesAndNewlines))")
         }
         runner.onExit = { [weak self] status in
@@ -253,6 +259,7 @@ final class ImportBatchManager: ObservableObject {
             let success = (status == 0) && !self.cancelRequested
             self.conversionResults[game.name] = success
 
+            self.timeline.finish(success ? .succeeded : self.cancelRequested ? .cancelled : .failed)
             if success {
                 self.appendLog(tr("✓ „\(game.name)“ erfolgreich umgewandelt.", "✓ “\(game.name)” converted successfully."))
                 self.moveResultAndCleanUp(game: game)
@@ -354,6 +361,7 @@ final class ImportBatchManager: ObservableObject {
 
     private func handleOutputLine(_ line: String) {
         guard let event = BuildEvent.parse(line) else { return }
+        timeline.consume(line)
 
         switch event {
         case let .stage(index, total, name, step):

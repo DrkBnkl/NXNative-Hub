@@ -5,6 +5,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+- Redesigned live log: header with the current step, count, progress bar, elapsed time and ETA; a list of the build's steps with their state and duration; the log filtered to what matters ("Important" hides the repeated progress lines, "All", "Problems"), with search and a Copy button. Works for builds started in the app, the batch import and Terminal (`--progress lines` or `json`).
+
 ## [1.4.2] – 2026-11-20
 
 ### Changed

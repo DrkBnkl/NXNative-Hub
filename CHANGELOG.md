@@ -5,6 +5,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+- "Cancel Build…" in the live log, with a confirmation: stops a build started in the app, the batch import, or a build started in Terminal (SIGTERM, which stops the running tool's whole process group). A Terminal build that ended stays in the live log with its outcome.
+
 ## [1.5.0] – 2026-11-20
 
 ### Changed

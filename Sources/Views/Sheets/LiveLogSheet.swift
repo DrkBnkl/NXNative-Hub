@@ -16,6 +16,9 @@ struct LiveLogSheet: View {
     @State private var didTrashBuildFolder = false
     @State private var filter: LogFilter = .important
     @State private var search = ""
+    @State private var confirmingCancel = false
+    @State private var cancelling = false
+    @State private var cancelFailed = false
 
     private struct Source {
         var timeline: BuildTimeline
@@ -25,6 +28,9 @@ struct LiveLogSheet: View {
         var logFile: String?
         var errorMessage: String?
         var isAppBuild = false
+        /// Stops the build; nil when it cannot be stopped from here (it has ended).
+        var cancel: (() -> Bool)?
+        var isImport = false
     }
 
     private var source: Source? {
@@ -34,7 +40,9 @@ struct LiveLogSheet: View {
                           origin: tr("Batch-Import · Spiel \(importManager.currentGameIndex + 1) von \(importManager.activeBatchGames.count)",
                                      "Batch import · game \(importManager.currentGameIndex + 1) of \(importManager.activeBatchGames.count)"),
                           originIcon: "square.stack.3d.down.right",
-                          logFile: NXPaths.liveLogPath)
+                          logFile: NXPaths.liveLogPath,
+                          cancel: { importManager.cancelBatch(); return true },
+                          isImport: true)
         }
         if buildManager.isRunning || (buildManager.isFinished && !buildManager.timeline.isEmpty) {
             let folderName = buildManager.lastGameDirectory.map { URL(fileURLWithPath: $0).lastPathComponent }
@@ -44,9 +52,11 @@ struct LiveLogSheet: View {
                           originIcon: "macwindow",
                           logFile: NXPaths.liveLogPath,
                           errorMessage: buildManager.errorMessage,
-                          isAppBuild: true)
+                          isAppBuild: true,
+                          cancel: buildManager.isRunning ? { buildManager.cancel(); return true } : nil)
         }
-        if let build = buildMonitor.activeBuild {
+        if let build = buildMonitor.activeBuild ?? buildMonitor.lastEndedBuild {
+            let isRunning = buildMonitor.activeBuild != nil
             var timeline = build.timeline ?? BuildTimeline()
             if timeline.isEmpty { build.recentLogLines.forEach { timeline.consume($0) } }
             let file = build.latestLogFile.map { ($0 as NSString).lastPathComponent }
@@ -54,7 +64,8 @@ struct LiveLogSheet: View {
                           gameName: timeline.gameName ?? build.gameName,
                           origin: tr("Außerhalb der App gestartet", "Started outside the app") + (file.map { " · \($0)" } ?? ""),
                           originIcon: "terminal",
-                          logFile: build.latestLogFile)
+                          logFile: build.latestLogFile,
+                          cancel: isRunning && build.scriptPid != nil ? { buildMonitor.stop(build) } : nil)
         }
         return nil
     }
@@ -98,6 +109,7 @@ struct LiveLogSheet: View {
             }
         }
         .padding(20)
+        .onChange(of: source?.timeline.outcome) { if source?.timeline.outcome != nil { cancelling = false } }
         .frame(minWidth: 780, idealWidth: 860, minHeight: 560, idealHeight: 640)
     }
 
@@ -109,6 +121,36 @@ struct LiveLogSheet: View {
                 .lineLimit(1)
                 .truncationMode(.middle)
             Spacer()
+            if let cancel = source.cancel, source.timeline.outcome == nil {
+                Button(role: .destructive) {
+                    confirmingCancel = true
+                } label: {
+                    Label(cancelling ? tr("Wird abgebrochen …", "Cancelling…") : tr("Build abbrechen …", "Cancel Build…"),
+                          systemImage: "stop.circle")
+                }
+                .disabled(cancelling)
+                .help(tr("Den laufenden Build stoppen", "Stop the running build"))
+                .alert(source.isImport ? tr("Import abbrechen?", "Cancel import?") : tr("Build abbrechen?", "Cancel build?"),
+                       isPresented: $confirmingCancel) {
+                    Button(source.isImport ? tr("Import abbrechen", "Cancel Import") : tr("Build abbrechen", "Cancel Build"), role: .destructive) {
+                        cancelling = cancel()
+                        cancelFailed = !cancelling
+                    }
+                    Button(tr("Weiterbauen", "Keep Building"), role: .cancel) {}
+                } message: {
+                    Text(source.isImport
+                         ? tr("Das Spiel, das gerade umgewandelt wird, wird gestoppt; die übrigen werden übersprungen. Die Quelldateien bleiben erhalten.",
+                              "The game being converted is stopped and the rest are skipped. The source files are kept.")
+                         : tr("Der laufende Schritt wird gestoppt, auch laufende Shader-Compiler. Was schon fertig ist (entpackte Dateien, kompilierte Shader), bleibt im Build-Ordner, und der nächste Build verwendet es meist wieder.",
+                              "The running step is stopped, including running shader compilers. What is already done (extracted files, compiled shaders) stays in the build folder, and the next build usually reuses it."))
+                }
+                .alert(tr("Build ließ sich nicht stoppen", "Could not stop the build"), isPresented: $cancelFailed) {
+                    Button("OK", role: .cancel) {}
+                } message: {
+                    Text(tr("Der Prozess läuft nicht mehr oder gehört nicht zu einem nxnative-Build. Im Terminal stoppt ihn Ctrl+C.",
+                            "The process is no longer running or is not an nxnative build. In Terminal, Ctrl+C stops it."))
+                }
+            }
             if let logPath = source.logFile, FileManager.default.fileExists(atPath: logPath) {
                 Button(tr("Logdatei im Finder", "Show Log File")) {
                     FilePanels.revealInFinder(logPath)

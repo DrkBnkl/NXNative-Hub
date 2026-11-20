@@ -71,14 +71,7 @@ struct BuilderView: View {
     }
 
     private var lowSpaceMessage: String {
-        guard let space = form.diskSpace else { return "" }
-        let free = DiskSpaceEstimate.format(space.available)
-        let needed = DiskSpaceEstimate.format(space.required)
-        return form.hasPreviousBuild
-            ? tr("Frei sind \(free), ein erster Build braucht etwa \(needed). Ein früherer Build wird wiederverwendet, ein Neubau braucht meist deutlich weniger. nxnative bricht selbst ab, wenn der Platz nicht reicht.",
-                 "\(free) is free; a first build needs about \(needed). A previous build is reused, so a rebuild usually needs much less. nxnative stops on its own if the space is not enough.")
-            : tr("Frei sind \(free), der Build braucht etwa \(needed) (doppelte Spielgröße + 10 GB). Gib zuerst Speicher frei oder wähle einen Ordner auf einem anderen Laufwerk.",
-                 "\(free) is free; the build needs about \(needed) (twice the game size + 10 GB). Free up space first or choose a folder on another drive.")
+        form.diskSpace?.confirmationMessage(hasPreviousBuild: form.hasPreviousBuild) ?? ""
     }
 
     // MARK: Sections

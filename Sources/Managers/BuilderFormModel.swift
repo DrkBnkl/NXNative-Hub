@@ -22,6 +22,17 @@ struct DiskSpaceEstimate: Equatable {
     static func format(_ bytes: Int64) -> String {
         ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
     }
+
+    /// Text of the "build anyway?" question asked when the space is below the estimate.
+    func confirmationMessage(hasPreviousBuild: Bool) -> String {
+        let free = Self.format(available)
+        let needed = Self.format(required)
+        return hasPreviousBuild
+            ? tr("Frei sind \(free), ein erster Build braucht etwa \(needed). Ein früherer Build wird wiederverwendet, ein Neubau braucht meist deutlich weniger. nxnative bricht selbst ab, wenn der Platz nicht reicht.",
+                 "\(free) is free; a first build needs about \(needed). A previous build is reused, so a rebuild usually needs much less. nxnative stops on its own if the space is not enough.")
+            : tr("Frei sind \(free), der Build braucht etwa \(needed) (doppelte Spielgröße + 10 GB). Gib zuerst Speicher frei oder wähle einen Ordner auf einem anderen Laufwerk.",
+                 "\(free) is free; the build needs about \(needed) (twice the game size + 10 GB). Free up space first or choose a folder on another drive.")
+    }
 }
 
 final class BuilderFormModel: ObservableObject {
@@ -202,6 +213,12 @@ final class BuilderFormModel: ObservableObject {
                      appName: appName)
     }
 
+    /// Measures the free space again (it may have been freed since the folder was chosen).
+    func refreshedDiskSpace() -> DiskSpaceEstimate? {
+        updateBuildEstimates()
+        return diskSpace
+    }
+
     /// Set when a build was asked for while the estimate says the disk is too full; the builder
     /// page asks whether to build anyway.
     @Published var lowSpaceConfirmationPending = false
@@ -213,8 +230,7 @@ final class BuilderFormModel: ObservableObject {
                     ignoringLowSpace: Bool = false) {
         guard canStart(manager: manager, monitor: monitor, prefs: prefs) else { return }
         if !ignoringLowSpace {
-            updateBuildEstimates()   // the space may have been freed since the folder was chosen
-            if let space = diskSpace, !space.isSufficient {
+            if let space = refreshedDiskSpace(), !space.isSufficient {
                 lowSpaceConfirmationPending = true
                 return
             }

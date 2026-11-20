@@ -16,6 +16,8 @@ struct ActiveBuildInfo: Equatable, Identifiable {
     let currentStageDescription: String
     let compiledShadersCount: Int?
     let latestLogFile: String?
+    /// The Python process running the build script (not the shell or caffeinate around it).
+    var scriptPid: Int32?
     let recentLogLines: [String]
     /// Stages, progress and log entries read from `latestLogFile`.
     var timeline: BuildTimeline?
@@ -64,6 +66,11 @@ private final class LogFollower {
 
 final class ActiveBuildMonitor: ObservableObject {
     @Published private(set) var activeBuild: ActiveBuildInfo?
+    /// The last build seen outside the app after it ended, with its outcome read from its log,
+    /// so the live log still shows how it ended. Replaced when the next build appears.
+    @Published private(set) var lastEndedBuild: ActiveBuildInfo?
+    /// PIDs this app asked to stop (the outcome then reads "cancelled").
+    private var stopRequested: Set<Int32> = []
 
     private var timer: Timer?
     private var isChecking = false
@@ -94,9 +101,32 @@ final class ActiveBuildMonitor: ObservableObject {
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 self.isChecking = false
+                if info == nil, var ended = self.activeBuild {
+                    let stopped = self.stopRequested.contains(ended.pid)
+                        || ended.scriptPid.map(self.stopRequested.contains) == true
+                    ended.timeline?.finishFromLog(cancelled: stopped)
+                    self.lastEndedBuild = ended
+                    self.stopRequested.removeAll()
+                } else if info != nil {
+                    self.lastEndedBuild = nil
+                }
                 if self.activeBuild != info { self.activeBuild = info }
             }
         }
+    }
+
+    /// Stops a build started outside the app with SIGTERM, the build script's cancel signal: it stops
+    /// the running tool's whole process group (Metal compilers included) and exits with code 143.
+    /// Checks first that the PID still runs the build script (a PID can be reused).
+    @discardableResult
+    func stop(_ build: ActiveBuildInfo) -> Bool {
+        guard let pid = build.scriptPid, pid > 1 else { return false }
+        let args = CommandRunner.run("/bin/ps", ["-o", "args=", "-p", String(pid)]).output
+        guard args.contains("build_ipa_from_nsp.py") else { return false }
+        guard kill(pid, SIGTERM) == 0 else { return false }
+        stopRequested.insert(pid)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in self?.checkActiveBuild() }
+        return true
     }
 
     // MARK: Detection
@@ -112,6 +142,7 @@ final class ActiveBuildMonitor: ObservableObject {
         guard !relevant.isEmpty else { return nil }
 
         var mainPid: Int32 = 0
+        var scriptPid: Int32?
         var buildPids: [Int32] = []
         var gameFolder = ""
         var isCompilingShaders = false
@@ -122,6 +153,8 @@ final class ActiveBuildMonitor: ObservableObject {
                 if let pid = line.split(separator: " ", maxSplits: 1).first.flatMap({ Int32($0) }) {
                     mainPid = pid
                     buildPids.append(pid)
+                    let executable = line.split(separator: " ").dropFirst().first.map { ($0 as NSString).lastPathComponent.lowercased() } ?? ""
+                    if executable.hasPrefix("python") { scriptPid = pid }
                 }
                 if let range = line.range(of: "build_ipa_from_nsp.py ") {
                     let after = line[range.upperBound...]
@@ -216,6 +249,7 @@ final class ActiveBuildMonitor: ObservableObject {
                                currentStageDescription: stageDesc,
                                compiledShadersCount: shaderCount,
                                latestLogFile: latestLogPath,
+                               scriptPid: scriptPid,
                                recentLogLines: recentLines,
                                timeline: timeline)
     }

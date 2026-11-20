@@ -87,6 +87,20 @@ struct BuildTimeline: Equatable {
         add(kind, text, time: Self.clock(Date()))
     }
 
+    /// Ends a build seen only through its log (started outside the app): cancelled when this app
+    /// stopped it or the log says so, failed after a red message or a failed stage, else done.
+    mutating func finishFromLog(cancelled: Bool) {
+        guard outcome == nil else { return }
+        let tail = entries.suffix(10)
+        if cancelled || tail.contains(where: { $0.text.contains("[RED] stopped") || $0.text.contains("[RED] interrupted") }) {
+            finish(.cancelled)
+        } else if stages.contains(where: { $0.state == .failed }) || tail.contains(where: { $0.kind == .error }) {
+            finish(.failed)
+        } else {
+            finish(.succeeded)
+        }
+    }
+
     mutating func finish(_ outcome: Outcome) {
         self.outcome = outcome
         if let i = stages.lastIndex(where: { $0.state == .running }) {

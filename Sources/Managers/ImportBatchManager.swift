@@ -58,6 +58,8 @@ final class ImportBatchManager: ObservableObject {
     private var announcedOutput: URL?
     private var currentGameFolder: URL?
     private var cancelRequested = false
+    /// The library's apps when the batch started, for each game's fallback icon.
+    private var installedApps: [InstalledGame] = []
     private let scanQueue = DispatchQueue(label: "org.nxnative.importScan", qos: .userInitiated)
 
     init() {
@@ -106,6 +108,9 @@ final class ImportBatchManager: ObservableObject {
             DispatchQueue.main.async {
                 self?.pendingGames = found
                 self?.isScanning = false
+                for base in Set(found.compactMap(\.baseTitleId)) {
+                    NintendoIconSearch.ensureIcon(baseTitleId: base, installedApps: [])
+                }
             }
         }
     }
@@ -164,7 +169,9 @@ final class ImportBatchManager: ObservableObject {
 
     // MARK: Batch conversion
 
-    func startBatchConversion(prodKeysPath: String, language: String, onFinished: @escaping () -> Void) {
+    func startBatchConversion(prodKeysPath: String, language: String, installedApps: [InstalledGame] = [],
+                              onFinished: @escaping () -> Void) {
+        self.installedApps = installedApps
         let toConvert = pendingGames.filter(\.isSelected)
         guard !toConvert.isEmpty, !isConverting else { return }
 
@@ -241,7 +248,8 @@ final class ImportBatchManager: ObservableObject {
                                    language: language,
                                    showFps: false,
                                    keepExtracted: false,
-                                   appName: "")
+                                   appName: "",
+                                   fallbackIcon: GameIconStore.fallbackIcon(forSource: game.folderURL.path, installedApps: installedApps))
         let arguments = options.arguments(scriptPath: NXPaths.buildScriptPath)
         // The command line makes the live log recognizable for ActiveBuildMonitor.
         appendLog("[\(tr("Befehl", "Command"))] \(arguments.joined(separator: " "))")

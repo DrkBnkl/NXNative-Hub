@@ -93,6 +93,12 @@ final class GameLibraryManager: ObservableObject {
         scanQueue.async { [weak self] in
             guard let self = self else { return }
             let found = self.scanForGames(customFolders: folders, manualApps: manualApps)
+            GameIconStore.backUp(found)   // a copy of each app's icon for later builds without one
+            for game in found where !FileManager.default.fileExists(atPath: "\(game.path)/Contents/Resources/AppIcon.icns") {
+                if let base = SwitchTitleID.baseID(of: game.titleId) {   // an app without one: look it up for its next build
+                    DispatchQueue.main.async { NintendoIconSearch.ensureIcon(baseTitleId: base, installedApps: []) }
+                }
+            }
             DispatchQueue.main.async {
                 self.games = found
                 self.isScanning = false

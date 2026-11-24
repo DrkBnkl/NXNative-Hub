@@ -11,9 +11,19 @@ final class GameLibraryManager: ObservableObject {
     private let customFoldersKey = "nxnative_custom_folders"
     private let manualAppsKey = "nxnative_manual_apps"
     private let sizeCacheKey = "nxnative_size_cache"
+    private struct StatusCacheEntry {
+        let mtime: Date
+        let buildCommit: String?
+        let shaderChain: String?
+        let headCommit: String
+        let repoShaderChain: String?
+        let status: GameUpdateStatus
+    }
+
     private let scanQueue = DispatchQueue(label: "org.nxnative.libraryScan", qos: .userInitiated)
     private var rescanRequested = false
-    private var statusCache: [String: (mtime: Date, headCommit: String, status: GameUpdateStatus)] = [:]
+    private var rescanForceRecheck = false
+    private var statusCache: [String: StatusCacheEntry] = [:]
 
     var recompileRecommendedCount: Int {
         games.filter { $0.updateStatus.isRecompileRecommended }.count
@@ -80,10 +90,11 @@ final class GameLibraryManager: ObservableObject {
 
     // MARK: Scan
 
-    func refreshLibrary() {
+    func refreshLibrary(forceRecheck: Bool = false) {
         // If a scan is already running, queue exactly one more (instead of scanning in parallel).
         guard !isScanning else {
             rescanRequested = true
+            if forceRecheck { rescanForceRecheck = true }
             return
         }
         isScanning = true
@@ -92,13 +103,18 @@ final class GameLibraryManager: ObservableObject {
 
         scanQueue.async { [weak self] in
             guard let self = self else { return }
+            if forceRecheck {
+                self.statusCache.removeAll()
+            }
             let found = self.scanForGames(customFolders: folders, manualApps: manualApps)
             DispatchQueue.main.async {
                 self.games = found
                 self.isScanning = false
                 if self.rescanRequested {
+                    let nextForce = self.rescanForceRecheck
                     self.rescanRequested = false
-                    self.refreshLibrary()
+                    self.rescanForceRecheck = false
+                    self.refreshLibrary(forceRecheck: nextForce)
                 }
             }
         }
@@ -169,6 +185,9 @@ final class GameLibraryManager: ObservableObject {
             let status: GameUpdateStatus
             if let cached = statusCache[resolved.path],
                cached.headCommit == (repoState?.headCommit ?? ""),
+               cached.repoShaderChain == repoState?.shaderChain,
+               cached.buildCommit == info.commit,
+               cached.shaderChain == info.chain,
                abs(cached.mtime.timeIntervalSince(info.mtime)) < 2 {
                 status = cached.status
             } else {
@@ -180,7 +199,14 @@ final class GameLibraryManager: ObservableObject {
                     repoState: repoState
                 )
                 if let head = repoState?.headCommit {
-                    statusCache[resolved.path] = (mtime: info.mtime, headCommit: head, status: status)
+                    statusCache[resolved.path] = StatusCacheEntry(
+                        mtime: info.mtime,
+                        buildCommit: info.commit,
+                        shaderChain: info.chain,
+                        headCommit: head,
+                        repoShaderChain: repoState?.shaderChain,
+                        status: status
+                    )
                 }
             }
 

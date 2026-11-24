@@ -6,6 +6,7 @@ import AppKit
 /// Sidebar sections of the main window.
 enum SidebarItem: String, CaseIterable, Identifiable, Hashable {
     case library
+    case packages
     case builder
 
     var id: String { rawValue }
@@ -13,6 +14,7 @@ enum SidebarItem: String, CaseIterable, Identifiable, Hashable {
     var title: String {
         switch self {
         case .library: return tr("Meine Spiele", "My Games")
+        case .packages: return "NSP/NUP"
         case .builder: return tr("Spiel bauen", "Build Game")
         }
     }
@@ -20,6 +22,7 @@ enum SidebarItem: String, CaseIterable, Identifiable, Hashable {
     var systemImage: String {
         switch self {
         case .library: return "gamecontroller"
+        case .packages: return "externaldrive"
         case .builder: return "hammer"
         }
     }
@@ -166,8 +169,14 @@ struct GameBundleInfo {
         }
         self.chain = foundChain
 
-        let attrs = try? FileManager.default.attributesOfItem(atPath: appPath)
-        self.mtime = (attrs?[.modificationDate] as? Date) ?? Date()
+        let appMtime = (try? FileManager.default.attributesOfItem(atPath: appPath))?[.modificationDate] as? Date
+        let plistMtime = (try? FileManager.default.attributesOfItem(atPath: plistURL.path))?[.modificationDate] as? Date
+        switch (appMtime, plistMtime) {
+        case let (a?, p?): self.mtime = max(a, p)
+        case let (a?, nil): self.mtime = a
+        case let (nil, p?): self.mtime = p
+        case (nil, nil): self.mtime = Date()
+        }
     }
 }
 

@@ -190,6 +190,32 @@ enum GameMetaDetector {
         }
 
         let gameFiles = files.filter(NXPaths.isPackageFile)
+        return detect(fromPackageFiles: gameFiles, fallbackFolderName: folderURL.lastPathComponent, source: source)
+    }
+
+    /// Detects metadata from an explicit in-memory group of package files (.nsp/.xci/.nsz/.xcz)
+    /// without requiring them to live in their own subfolder (used for read-only external volumes).
+    static func detect(fromPackageFiles gameFiles: [URL], fallbackFolderName: String, source: GameSourceKind? = nil) -> DetectedGameMeta {
+        let resolvedSource: GameSourceKind
+        if let source = source {
+            resolvedSource = source
+        } else if gameFiles.isEmpty {
+            resolvedSource = .none
+        } else if gameFiles.contains(where: { GameSourceKind.switch2TitleID(in: [$0]) != nil }) {
+            resolvedSource = .switch2Packages(gameFiles)
+        } else {
+            resolvedSource = .packages
+        }
+
+        if case .switch2Packages(let packages) = resolvedSource {
+            let tid = GameSourceKind.switch2TitleID(in: packages)
+            return DetectedGameMeta(titleId: tid,
+                                    baseTitleId: tid.flatMap { SwitchTitleID.baseID(of: $0) },
+                                    detectedVersions: [],
+                                    gameFiles: packages,
+                                    source: resolvedSource)
+        }
+
         var detectedTid: String?
         var versions: Set<Int> = []
 
@@ -205,21 +231,17 @@ enum GameMetaDetector {
         }
 
         // 2. Title ID from the folder name
-        if detectedTid == nil, let tid = firstGroup(tidRegex, in: folderURL.lastPathComponent) {
+        if detectedTid == nil, let tid = firstGroup(tidRegex, in: fallbackFolderName) {
             detectedTid = tid.uppercased()
         }
 
         // 3. Title ID from the ticket name in the NSP's PFS0 header
         if detectedTid == nil {
             for file in gameFiles where file.pathExtension.lowercased() == "nsp" {
-                guard let handle = try? FileHandle(forReadingFrom: file) else { continue }
-                defer { try? handle.close() }
-                let data = handle.readData(ofLength: 8192)
-                guard data.count >= 16, data.starts(with: [0x50, 0x46, 0x53, 0x30]), // "PFS0"
-                      let str = String(data: data, encoding: .ascii),
-                      let tid = firstGroup(tikRegex, in: str) else { continue }
-                detectedTid = tid.uppercased()
-                break
+                if let tid = detectTitleIdFromNSPHeader(file) {
+                    detectedTid = tid
+                    break
+                }
             }
         }
 
@@ -229,7 +251,28 @@ enum GameMetaDetector {
                                 baseTitleId: baseTid,
                                 detectedVersions: versions.sorted(),
                                 gameFiles: gameFiles,
-                                source: source)
+                                source: resolvedSource)
+    }
+
+    /// Reads the Switch title ID of a single package file from its filename or NSP PFS0 header (strictly read-only).
+    static func detectTitleId(ofPackageFile file: URL) -> String? {
+        if let tid = firstGroup(tidRegex, in: file.lastPathComponent) {
+            return tid.uppercased()
+        }
+        if file.pathExtension.lowercased() == "nsp" {
+            return detectTitleIdFromNSPHeader(file)
+        }
+        return nil
+    }
+
+    private static func detectTitleIdFromNSPHeader(_ file: URL) -> String? {
+        guard let handle = try? FileHandle(forReadingFrom: file) else { return nil }
+        defer { try? handle.close() }
+        let data = handle.readData(ofLength: 8192)
+        guard data.count >= 16, data.starts(with: [0x50, 0x46, 0x53, 0x30]), // "PFS0"
+              let str = String(data: data, encoding: .ascii),
+              let tid = firstGroup(tikRegex, in: str) else { return nil }
+        return tid.uppercased()
     }
 
     private static func switch2Meta(_ contents: GameSourceContents?, gameFiles: [URL], source: GameSourceKind) -> DetectedGameMeta {

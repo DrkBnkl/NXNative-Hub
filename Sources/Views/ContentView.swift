@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 // MARK: - Main window
 //
@@ -39,6 +40,23 @@ struct ContentView: View {
         // Forces all texts to be rebuilt when the UI language changes.
         .id(lang.currentChoice)
         .onReceive(library.$games) { SaveSyncManager.shared.setGames($0) }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            updater.fetchLocalCommitInfo()
+            library.refreshLibrary()
+        }
+        .onChange(of: buildMonitor.activeBuild) { oldBuild, newBuild in
+            // External or background build just finished: re-evaluate all game statuses.
+            if oldBuild != nil && newBuild == nil {
+                library.refreshLibrary(forceRecheck: true)
+            }
+        }
+        .onChange(of: router.selection) { _, newSelection in
+            if newSelection == .library {
+                library.refreshLibrary()
+            } else if newSelection == .packages {
+                importManager.refreshExternalVolumes()
+            }
+        }
         .onAppear {
             prefs.autoDetectKeysIfNeeded()
             // Show the setup sheet once per launch, only if something required is missing.
@@ -99,6 +117,7 @@ struct ContentView: View {
     private var detail: some View {
         switch router.selection ?? .library {
         case .library: LibraryView()
+        case .packages: ImportView()
         case .builder: BuilderView()
         }
     }
@@ -119,11 +138,14 @@ struct SidebarView: View {
                 Label(SidebarItem.library.title, systemImage: SidebarItem.library.systemImage)
                     .badge(library.games.count)
                     .tag(SidebarItem.library)
+
+                Label(SidebarItem.packages.title, systemImage: SidebarItem.packages.systemImage)
+                    .badge(importManager.pendingCount > 0 ? "\(importManager.pendingCount)" : nil)
+                    .tag(SidebarItem.packages)
             }
 
             Section(tr("Erstellen", "Create")) {
                 Label(SidebarItem.builder.title, systemImage: SidebarItem.builder.systemImage)
-                    .badge(importManager.pendingCount > 0 ? "\(importManager.pendingCount)" : nil)
                     .tag(SidebarItem.builder)
             }
         }

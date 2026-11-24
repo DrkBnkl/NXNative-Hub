@@ -93,8 +93,11 @@ struct BuilderView: View {
                     .foregroundStyle(Color.accentColor)
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(tr("\(importManager.pendingCount) Spiel(e) im Import-Ordner bereit",
-                            "\(importManager.pendingCount) game(s) ready in Import folder"))
+                    Text(importManager.isReadOnlySource
+                         ? tr("\(importManager.pendingCount) Spiel(e) auf externem Medium bereit",
+                              "\(importManager.pendingCount) game(s) ready on external volume")
+                         : tr("\(importManager.pendingCount) Spiel(e) im Import-Ordner bereit",
+                              "\(importManager.pendingCount) game(s) ready in Import folder"))
                         .font(.callout.weight(.medium))
                     Text(tr("Mehrere Spiele können automatisch im Stapel umgewandelt werden.",
                             "Multiple games can be converted automatically in batch mode."))

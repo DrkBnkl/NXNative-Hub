@@ -192,7 +192,7 @@ enum GameUpdateAction {
                     }
                 }
             }
-            library.refreshLibrary()
+            library.refreshLibrary(forceRecheck: true)
             buildMonitor.checkActiveBuild()
             builderForm.scanGameFolder()
         }

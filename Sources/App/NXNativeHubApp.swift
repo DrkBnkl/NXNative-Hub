@@ -1,4 +1,36 @@
 import SwiftUI
+import AppKit
+
+// MARK: - App delegate (quit guard while a build is running)
+
+final class NXNativeAppDelegate: NSObject, NSApplicationDelegate {
+    weak var buildManager: BuildManager?
+    weak var importManager: ImportBatchManager?
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        let isBuilding = (buildManager?.isRunning == true) || (importManager?.isConverting == true)
+        guard isBuilding else { return .terminateNow }
+
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = tr("Build läuft noch – trotzdem beenden?",
+                               "Build Still Running – Quit Anyway?")
+        alert.informativeText = tr(
+            "Wenn du NXNative Hub jetzt beendest, wird der laufende Build abgebrochen und die App nicht fertig verpackt. Bereits kompilierte Shader bleiben im Cache erhalten.",
+            "Quitting NXNative Hub now will cancel the running build before the app is packaged. Already compiled shaders will remain in the cache."
+        )
+        alert.addButton(withTitle: tr("Weiterlaufen lassen", "Keep Running"))
+        let quitButton = alert.addButton(withTitle: tr("Build abbrechen & beenden", "Cancel Build & Quit"))
+        quitButton.hasDestructiveAction = true
+
+        if alert.runModal() == .alertSecondButtonReturn {
+            if buildManager?.isRunning == true { buildManager?.cancel() }
+            if importManager?.isConverting == true { importManager?.cancelBatch() }
+            return .terminateNow
+        }
+        return .terminateCancel
+    }
+}
 
 // MARK: - App entry point
 //
@@ -9,6 +41,7 @@ import SwiftUI
 
 @main
 struct NXNativeHubApp: App {
+    @NSApplicationDelegateAdaptor(NXNativeAppDelegate.self) private var appDelegate
     @StateObject private var router = AppRouter()
     @StateObject private var prefs = AppPreferences.shared
     @StateObject private var library = GameLibraryManager()
@@ -35,6 +68,10 @@ struct NXNativeHubApp: App {
                 .environmentObject(importManager)
                 .environmentObject(setupChecker)
                 .environmentObject(gamepad)
+                .onAppear {
+                    appDelegate.buildManager = buildManager
+                    appDelegate.importManager = importManager
+                }
         }
         .defaultSize(width: 960, height: 680)
         .commands {
@@ -57,6 +94,10 @@ struct NXNativeHubApp: App {
                 .environmentObject(importManager)
                 .environmentObject(setupChecker)
                 .environmentObject(gamepad)
+                .onAppear {
+                    appDelegate.buildManager = buildManager
+                    appDelegate.importManager = importManager
+                }
         }
     }
 }

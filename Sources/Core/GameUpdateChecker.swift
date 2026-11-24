@@ -51,6 +51,26 @@ enum GameUpdateChecker {
         return RepoState(repoPath: repo, headCommit: head, headSubject: subject, shaderChain: chain)
     }
 
+    /// Strips suffixes like `+dirty` from a stamped `DMCommit` value so `git` can resolve it.
+    static func normalizedCommit(_ commit: String?) -> String? {
+        guard let raw = commit?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else {
+            return nil
+        }
+        let base = raw.split(separator: "+", maxSplits: 1).first.map(String.init) ?? raw
+        return base.isEmpty ? nil : base
+    }
+
+    /// Compares two git commit hashes of potentially different lengths (e.g. 12-char `DMCommit`
+    /// with optional `+dirty` vs. 7–8-char `git rev-parse --short HEAD`).
+    static func commitsMatch(_ lhs: String?, _ rhs: String?) -> Bool {
+        guard let a = normalizedCommit(lhs)?.lowercased(),
+              let b = normalizedCommit(rhs)?.lowercased(),
+              min(a.count, b.count) >= 7 else {
+            return false
+        }
+        return a.hasPrefix(b) || b.hasPrefix(a)
+    }
+
     /// Evaluates whether an update exists for the specified game and whether recompilation of shaders
     /// is truly necessary or if an App Update is sufficient.
     static func evaluate(
@@ -63,6 +83,8 @@ enum GameUpdateChecker {
         guard let repo = repoState else {
             return .unknown(reason: tr("nxnative-Repository nicht gefunden", "nxnative repository not found"))
         }
+
+        let cleanCommit = normalizedCommit(buildCommit)
 
         // 1. Check if the game's shader chain differs from the repo's current DMSH_CHAIN
         let chainMismatch = (shaderChain != nil && repo.shaderChain != nil && shaderChain != repo.shaderChain)
@@ -86,7 +108,7 @@ enum GameUpdateChecker {
             let logResult: CommandRunner.Result
             let diffResult: CommandRunner.Result
 
-            if let commit = buildCommit, !commit.isEmpty {
+            if let commit = cleanCommit {
                 let verify = CommandRunner.git(repo.repoPath, "rev-parse", "--verify", "\(commit)^{commit}")
                 if verify.succeeded {
                     logResult = CommandRunner.git(repo.repoPath, "log", "\(commit)..HEAD", "--oneline", "--", relPath)
@@ -94,12 +116,12 @@ enum GameUpdateChecker {
                 } else {
                     let epoch = Int(mtime.timeIntervalSince1970)
                     logResult = CommandRunner.git(repo.repoPath, "log", "--since=\(epoch)", "--oneline", "--", relPath)
-                    diffResult = CommandRunner.git(repo.repoPath, "diff", "--name-only", "--since=\(epoch)", "HEAD", "--", relPath)
+                    diffResult = CommandRunner.git(repo.repoPath, "log", "--since=\(epoch)", "--name-only", "--pretty=format:", "--", relPath)
                 }
             } else {
                 let epoch = Int(mtime.timeIntervalSince1970)
                 logResult = CommandRunner.git(repo.repoPath, "log", "--since=\(epoch)", "--oneline", "--", relPath)
-                diffResult = CommandRunner.git(repo.repoPath, "diff", "--name-only", "--since=\(epoch)", "HEAD", "--", relPath)
+                diffResult = CommandRunner.git(repo.repoPath, "log", "--since=\(epoch)", "--name-only", "--pretty=format:", "--", relPath)
             }
 
             if logResult.succeeded {
@@ -113,6 +135,7 @@ enum GameUpdateChecker {
                 let changedPaths = diffResult.output
                     .split(separator: "\n")
                     .map(String.init)
+                    .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
                 for path in changedPaths {
                     let filename = (path as NSString).lastPathComponent
                     if shaderRelatedFiles.contains(filename) && !changedShaderFiles.contains(filename) {
@@ -124,7 +147,7 @@ enum GameUpdateChecker {
 
         // 3. Check general engine commits
         var engineCommitsCount = 0
-        if let commit = buildCommit, !commit.isEmpty {
+        if let commit = cleanCommit {
             let verify = CommandRunner.git(repo.repoPath, "rev-parse", "--verify", "\(commit)^{commit}")
             if verify.succeeded {
                 let countResult = CommandRunner.git(repo.repoPath, "rev-list", "--count", "\(commit)..HEAD")

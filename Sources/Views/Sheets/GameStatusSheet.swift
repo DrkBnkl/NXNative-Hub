@@ -4,7 +4,7 @@ import AppKit
 // MARK: - Game update & recompilation status sheet
 
 struct GameStatusSheet: View {
-    let game: InstalledGame
+    private let initialGame: InstalledGame
     @EnvironmentObject private var router: AppRouter
     @EnvironmentObject private var builderForm: BuilderFormModel
     @EnvironmentObject private var buildManager: BuildManager
@@ -16,6 +16,14 @@ struct GameStatusSheet: View {
     @State private var buildFolderURL: URL?
     @State private var buildFolderSizeText: String?
     @State private var didTrashBuildFolder = false
+
+    init(game: InstalledGame) {
+        self.initialGame = game
+    }
+
+    private var game: InstalledGame {
+        library.games.first(where: { $0.id == initialGame.id }) ?? initialGame
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -51,6 +59,7 @@ struct GameStatusSheet: View {
         }
         .frame(width: 560, height: 530)
         .onAppear {
+            updater.fetchLocalCommitInfo()
             checkForBuildFolder()
         }
     }
@@ -167,7 +176,7 @@ struct GameStatusSheet: View {
                     label: tr("nxnative-Commit", "nxnative Commit"),
                     buildValue: game.buildCommit ?? tr("Älterer Build", "Older build"),
                     repoValue: updater.currentCommitHash.isEmpty ? "–" : updater.currentCommitHash,
-                    isMismatch: game.buildCommit != updater.currentCommitHash
+                    isMismatch: !GameUpdateChecker.commitsMatch(game.buildCommit, updater.currentCommitHash)
                 )
 
                 comparisonRow(

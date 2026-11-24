@@ -206,7 +206,7 @@ final class BuilderFormModel: ObservableObject {
     func startBuild(manager: BuildManager, monitor: ActiveBuildMonitor, prefs: AppPreferences, library: GameLibraryManager) {
         guard canStart(manager: manager, monitor: monitor, prefs: prefs) else { return }
         manager.startBuild(options: makeOptions(prefs: prefs)) { [weak self] in
-            library.refreshLibrary()
+            library.refreshLibrary(forceRecheck: true)
             monitor.checkActiveBuild()
             self?.scanGameFolder()   // picks up the new work folder and the free space
         }

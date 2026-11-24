@@ -69,7 +69,7 @@ struct UpdateSheet: View {
 
                 if updater.updateAvailable {
                     Button {
-                        updater.performUpdate { library.refreshLibrary() }
+                        updater.performUpdate { library.refreshLibrary(forceRecheck: true) }
                     } label: {
                         if updater.isUpdating {
                             ProgressView().controlSize(.small)

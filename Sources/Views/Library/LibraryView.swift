@@ -328,7 +328,7 @@ struct LibraryView: View {
             .help(tr("Spiele oder Ordner zur Bibliothek hinzufügen", "Add games or folders to the library"))
 
             Button {
-                library.refreshLibrary()
+                library.refreshLibrary(forceRecheck: true)
             } label: {
                 Label(tr("Neu laden", "Reload"), systemImage: "arrow.clockwise")
             }

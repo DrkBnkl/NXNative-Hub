@@ -43,8 +43,10 @@ struct AppCommands: Commands {
         CommandGroup(before: .sidebar) {
             Button(SidebarItem.library.title) { router.selection = .library }
                 .keyboardShortcut("1", modifiers: .command)
-            Button(SidebarItem.builder.title) { router.selection = .builder }
+            Button(SidebarItem.packages.title) { router.selection = .packages }
                 .keyboardShortcut("2", modifiers: .command)
+            Button(SidebarItem.builder.title) { router.selection = .builder }
+                .keyboardShortcut("3", modifiers: .command)
             Divider()
         }
 
@@ -86,7 +88,7 @@ struct AppCommands: Commands {
             Divider()
 
             Button(tr("Bibliothek neu laden", "Reload Library")) {
-                library.refreshLibrary()
+                library.refreshLibrary(forceRecheck: true)
             }
             .keyboardShortcut("r", modifiers: [.command, .shift])
 

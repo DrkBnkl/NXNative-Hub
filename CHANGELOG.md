@@ -5,6 +5,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+- **Read-Only External USB / Folder Import**:
+  - Added an import source selector in the Batch Import sheet to pick connected external USB drives/volumes or any custom folder directly.
+  - Strictly read-only scanning for external sources recognizes loose `.nsp`/`.xci`/`.nsz`/`.xcz` files (grouped in memory by Title ID), `.nup` containers, dump folders, and nested subdirectories without moving or modifying any files.
+  - Conversions from external sources run inside a local temporary symlink staging folder so build artifacts never touch the external drive; all trash/delete actions are disabled and blocked in read-only mode.
+
 ## [1.4.1] – 2026-11-17
 
 ### Fixed

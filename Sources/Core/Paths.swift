@@ -11,7 +11,13 @@ enum NXPaths {
     static var nxnativeRoot: String { "\(home)/NXNative" }
     static var gamesFolder: URL { URL(fileURLWithPath: "\(nxnativeRoot)/Games") }
     static var importFolder: URL { URL(fileURLWithPath: "\(nxnativeRoot)/Import") }
+    /// Local temporary staging directory (symlinks + build output) used when importing from
+    /// read-only external volumes so the external medium is never written to.
+    static var externalImportStagingRoot: URL { importFolder.appendingPathComponent(".external_staging", isDirectory: true) }
     static var liveLogPath: String { "\(nxnativeRoot)/build_live.log" }
+
+    /// UserDefaults key for a custom/external import folder (empty = default ~/NXNative/Import).
+    static let customImportPathKey = "nxnativeCustomImportPath"
 
     /// Configurations (env.txt) and saves per title ID
     static var appSupport: String { "\(home)/Library/Application Support/nxnative" }

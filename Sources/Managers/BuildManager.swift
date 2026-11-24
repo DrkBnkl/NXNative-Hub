@@ -10,6 +10,9 @@ struct BuildOptions {
     var showFps: Bool
     var keepExtracted: Bool
     var appName: String
+    /// The icon the app gets only when the game carries none (`--fallback-icon`): the stored copy
+    /// of the installed app's icon, so an update from a NUP without one keeps it.
+    var fallbackIcon: String? = nil
 
     /// Command line for build_ipa_from_nsp.py. Without prod.keys (Switch 2 NUPs and dumps
     /// need none) `-k` is left out; the script would otherwise ask for it.
@@ -24,6 +27,7 @@ struct BuildOptions {
         args.append(keepExtracted ? "--keep-extracted" : "--no-keep-extracted")
         let name = appName.trimmingCharacters(in: .whitespaces)
         if !name.isEmpty { args += ["--app-name", name] }
+        if let icon = fallbackIcon, FileManager.default.fileExists(atPath: icon) { args += ["--fallback-icon", icon] }
         return args
     }
 }
@@ -39,6 +43,8 @@ final class BuildManager: ObservableObject {
     @Published private(set) var etaText = ""
     @Published private(set) var elapsedTimeText = ""
     @Published var logs: [String] = []
+    /// Stages, progress and log entries for the live log.
+    @Published private(set) var timeline = BuildTimeline()
     @Published private(set) var isFinished = false
     @Published private(set) var buildSucceeded = false
     @Published private(set) var createdArtifactPath: String?
@@ -85,6 +91,7 @@ final class BuildManager: ObservableObject {
         etaText = ""
         elapsedTimeText = ""
         logs.removeAll()
+        timeline = BuildTimeline()
         isFinished = false
         buildSucceeded = false
         createdArtifactPath = nil
@@ -143,9 +150,11 @@ final class BuildManager: ObservableObject {
         appendLog("[\(tr("Befehl", "Command"))] \(arguments.joined(separator: " "))\n")
 
         let runner = StreamingProcess(executable: pythonPath, arguments: arguments)
+        timeline.note(tr("nxnative-Build wird gestartet …", "Starting nxnative build…"))
         runner.onStdoutLine = { [weak self] line in self?.handleOutputLine(line) }
         runner.onStderrLine = { [weak self] line in
             self?.failureTracker.noteStderr(line)
+            self?.timeline.consumeStderr(line)
             self?.appendLog("[stderr] \(line)")
         }
         runner.onExit = { [weak self] status in
@@ -170,6 +179,7 @@ final class BuildManager: ObservableObject {
 
     private func handleOutputLine(_ line: String) {
         guard let event = BuildEvent.parse(line) else { return }
+        timeline.consume(line)
 
         switch event {
         case let .stage(index, total, name, step):
@@ -232,6 +242,8 @@ final class BuildManager: ObservableObject {
 
         if buildSucceeded {
             appendLog("\n" + tr("✓ Build erfolgreich beendet.", "✓ Build finished successfully."))
+            timeline.finish(.succeeded)
+            timeline.note(tr("Build erfolgreich beendet", "Build finished"), kind: .success)
             findOutputArtifact(gameDir: Self.outputFolder(of: options.gameDirectory), platform: options.platform)
             Notifier.post(title: tr("Build fertig", "Build Finished"),
                           body: tr("„\(gameName)“ wurde erfolgreich gebaut.", "“\(gameName)” was built successfully."))
@@ -239,9 +251,14 @@ final class BuildManager: ObservableObject {
             wasCancelled = true
             appendLog("\n" + tr("⏹ Build abgebrochen.", "⏹ Build cancelled."))
             errorMessage = failureTracker.describe(exitCode: exitCode)
+            timeline.finish(.cancelled)
+            timeline.note(tr("Build abgebrochen", "Build cancelled"), kind: .warning)
         } else {
             appendLog("\n" + tr("✗ Build mit Fehler beendet (Exit-Code \(exitCode)).", "✗ Build failed (exit code \(exitCode))."))
             errorMessage = failureTracker.describe(exitCode: exitCode)
+            timeline.finish(.failed)
+            timeline.note(tr("Build fehlgeschlagen (Exit-Code \(exitCode))", "Build failed (exit code \(exitCode))")
+                          + (errorMessage.map { ": \($0)" } ?? ""), kind: .error)
             buildLogsPath = BuildWorkFolder.logsFolder(in: options.gameDirectory)
             Notifier.post(title: tr("Build fehlgeschlagen", "Build Failed"),
                           body: "\(gameName): \(errorMessage ?? "")")
@@ -284,6 +301,7 @@ final class BuildManager: ObservableObject {
 
     private func fail(_ message: String) {
         errorMessage = message
+        timeline.note(message, kind: .error)
         isFinished = true
         buildSucceeded = false
     }

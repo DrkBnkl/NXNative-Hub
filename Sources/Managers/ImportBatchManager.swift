@@ -60,6 +60,8 @@ final class ImportBatchManager: ObservableObject {
     @Published private(set) var currentStageText = ""
     @Published private(set) var progressPercentage: Double = 0.0
     @Published private(set) var logs: [String] = []
+    /// Stages, progress and log entries of the game being converted, for the live log.
+    @Published private(set) var timeline = BuildTimeline()
     @Published private(set) var conversionResults: [String: Bool] = [:]
     @Published private(set) var wasCancelled = false
     @Published var isFinished = false
@@ -76,6 +78,8 @@ final class ImportBatchManager: ObservableObject {
     /// Temporary local staging directory (symlinks to read-only external files) for the active conversion.
     private var currentStagingFolder: URL?
     private var cancelRequested = false
+    /// The library's apps when the batch started, for each game's fallback icon.
+    private var installedApps: [InstalledGame] = []
     private let scanQueue = DispatchQueue(label: "org.nxnative.importScan", qos: .userInitiated)
     private var volumeObservers: [NSObjectProtocol] = []
 
@@ -227,6 +231,9 @@ final class ImportBatchManager: ObservableObject {
                 // Only apply if the user did not switch sources while scanning.
                 if self.activeImportFolderURL.standardizedFileURL == folder.standardizedFileURL {
                     self.pendingGames = found
+                    for base in Set(found.compactMap(\.baseTitleId)) {
+                        NintendoIconSearch.ensureIcon(baseTitleId: base, installedApps: [])
+                    }
                 }
                 self.isScanning = false
             }
@@ -466,7 +473,9 @@ final class ImportBatchManager: ObservableObject {
 
     // MARK: Batch conversion
 
-    func startBatchConversion(prodKeysPath: String, language: String, onFinished: @escaping () -> Void) {
+    func startBatchConversion(prodKeysPath: String, language: String, installedApps: [InstalledGame] = [],
+                              onFinished: @escaping () -> Void) {
+        self.installedApps = installedApps
         let toConvert = pendingGames.filter(\.isSelected)
         guard !toConvert.isEmpty, !isConverting else { return }
 
@@ -565,6 +574,9 @@ final class ImportBatchManager: ObservableObject {
         currentStagingFolder = nil
         currentGameName = game.name
         currentStageText = tr("Umwandlung wird gestartet …", "Starting conversion…")
+        timeline = BuildTimeline()
+        timeline.note(tr("Spiel \(currentGameIndex + 1) von \(activeBatchGames.count): \(game.name)",
+                         "Game \(currentGameIndex + 1) of \(activeBatchGames.count): \(game.name)"))
         progressPercentage = Double(currentGameIndex) / Double(max(1, total))
 
         appendLog("")
@@ -599,7 +611,8 @@ final class ImportBatchManager: ObservableObject {
                                    language: language,
                                    showFps: false,
                                    keepExtracted: false,
-                                   appName: "")
+                                   appName: "",
+                                   fallbackIcon: GameIconStore.fallbackIcon(forSource: game.folderURL.path, installedApps: installedApps))
         let arguments = options.arguments(scriptPath: NXPaths.buildScriptPath)
         // The command line makes the live log recognizable for ActiveBuildMonitor.
         appendLog("[\(tr("Befehl", "Command"))] \(arguments.joined(separator: " "))")
@@ -609,6 +622,7 @@ final class ImportBatchManager: ObservableObject {
         failureTracker = BuildFailureTracker()
         runner.onStderrLine = { [weak self] line in
             self?.failureTracker.noteStderr(line)
+            self?.timeline.consumeStderr(line)
             self?.appendLog("[stderr] \(line.trimmingCharacters(in: .whitespacesAndNewlines))")
         }
         runner.onExit = { [weak self] status in
@@ -616,6 +630,7 @@ final class ImportBatchManager: ObservableObject {
             let success = (status == 0) && !self.cancelRequested
             self.conversionResults[game.name] = success
 
+            self.timeline.finish(success ? .succeeded : self.cancelRequested ? .cancelled : .failed)
             if success {
                 self.appendLog(tr("✓ „\(game.name)“ erfolgreich umgewandelt.", "✓ “\(game.name)” converted successfully."))
                 self.moveResultAndCleanUp(game: game)
@@ -735,6 +750,7 @@ final class ImportBatchManager: ObservableObject {
 
     private func handleOutputLine(_ line: String) {
         guard let event = BuildEvent.parse(line) else { return }
+        timeline.consume(line)
 
         switch event {
         case let .stage(index, total, name, step):

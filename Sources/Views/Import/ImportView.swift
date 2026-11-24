@@ -645,7 +645,8 @@ struct ImportView: View {
 
     private func startConversion() {
         importManager.startBatchConversion(prodKeysPath: prefs.prodKeysPath,
-                                           language: prefs.defaultGameLanguage) {
+                                           language: prefs.defaultGameLanguage,
+                                           installedApps: library.games) {
             library.refreshLibrary(forceRecheck: true)
         }
     }

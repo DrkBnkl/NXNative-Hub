@@ -83,6 +83,11 @@ final class AppPreferences: ObservableObject {
         didSet { UserDefaults.standard.set(notifyWhenBuildsFinish, forKey: Keys.notifyBuilds) }
     }
 
+    /// Look up a game's icon at Nintendo by its title ID when the game files carry none (a NUP, a dump).
+    @Published var searchMissingIcons: Bool {
+        didSet { UserDefaults.standard.set(searchMissingIcons, forKey: "searchMissingIcons") }
+    }
+
     /// Whether to skip the game's start / settings window when launching.
     @Published var skipGameLauncher: Bool {
         didSet { UserDefaults.standard.set(skipGameLauncher, forKey: Keys.skipGameLauncher) }
@@ -102,6 +107,7 @@ final class AppPreferences: ObservableObject {
         let defaults = UserDefaults.standard
         notifyWhenBuildsFinish = defaults.object(forKey: Keys.notifyBuilds) as? Bool ?? true
         skipGameLauncher = defaults.object(forKey: Keys.skipGameLauncher) as? Bool ?? true
+        searchMissingIcons = defaults.object(forKey: "searchMissingIcons") as? Bool ?? true
         prodKeysPath = defaults.string(forKey: Keys.prodKeys) ?? ""
         customRepoPath = defaults.string(forKey: NXPaths.customRepoPathKey) ?? ""
         let savedLanguage = defaults.string(forKey: Keys.gameLanguage)

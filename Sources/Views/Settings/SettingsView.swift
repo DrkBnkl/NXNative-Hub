@@ -47,6 +47,9 @@ struct GeneralSettingsView: View {
                         if enabled { Notifier.requestAuthorizationIfNeeded() }
                     }
                 Toggle(tr("Startfenster der Spiele beim Start überspringen", "Skip Game Start Window at Launch"), isOn: $prefs.skipGameLauncher)
+                Toggle(tr("Fehlende Spiel-Icons bei Nintendo suchen", "Look Up Missing Game Icons at Nintendo"), isOn: $prefs.searchMissingIcons)
+                    .help(tr("Bringen die Spieldateien kein Icon mit (NUP, Dump), lädt NXNative Hub das Icon über die Title-ID von Nintendo. Gesendet wird nur die Title-ID.",
+                             "When the game files carry no icon (NUP, dump), NXNative Hub loads it from Nintendo by the title ID. Only the title ID is sent."))
             } footer: {
                 Text(tr("Spiele werden direkt mit den gewählten Einstellungen gestartet, ohne das nxnative-Startfenster zu öffnen. Die Spielsprache wird für neue Builds und den Stapel-Import verwendet.",
                         "Games launch directly with configured settings without opening the nxnative start window. The game language is used for new builds and batch imports."))

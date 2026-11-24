@@ -172,7 +172,20 @@ enum GameUpdateAction {
             return
         }
 
-        let options = builderForm.makeOptions(prefs: prefs)
+        if let space = builderForm.refreshedDiskSpace(), !space.isSufficient {
+            let alert = NSAlert()
+            alert.messageText = tr("Zu wenig Speicher frei", "Not enough disk space")
+            alert.informativeText = space.confirmationMessage(hasPreviousBuild: builderForm.hasPreviousBuild)
+            alert.alertStyle = .warning
+            alert.addButton(withTitle: tr("Abbrechen", "Cancel"))
+            alert.addButton(withTitle: tr("Trotzdem aktualisieren", "Update Anyway"))
+            guard alert.runModal() == .alertSecondButtonReturn else {
+                router.selection = .builder
+                return
+            }
+        }
+
+        let options = builderForm.makeOptions(prefs: prefs, installedApps: library.games)
         buildManager.startBuild(options: options) {
             if buildManager.buildSucceeded, let newAppPath = buildManager.createdArtifactPath {
                 let fm = FileManager.default

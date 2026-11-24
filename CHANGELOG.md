@@ -5,11 +5,50 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.7.0] – 2026-11-24
+
 ### Added
-- **Read-Only External USB / Folder Import**:
-  - Added an import source selector in the Batch Import sheet to pick connected external USB drives/volumes or any custom folder directly.
-  - Strictly read-only scanning for external sources recognizes loose `.nsp`/`.xci`/`.nsz`/`.xcz` files (grouped in memory by Title ID), `.nup` containers, dump folders, and nested subdirectories without moving or modifying any files.
-  - Conversions from external sources run inside a local temporary symlink staging folder so build artifacts never touch the external drive; all trash/delete actions are disabled and blocked in read-only mode.
+- **NSP/NUP Sidebar Library & Read-Only External USB Support**:
+  - Added a dedicated **NSP/NUP** section in the sidebar (under Library, `⌘2`) displaying games from connected external USB drives/volumes or custom folders alongside the default import folder, strictly read-only.
+  - Added toolbar search, filtering (Supported, Not Installed, Already Installed, Switch 2, Switch 1, Update/Unsupported), persistent sorting (Name A–Z/Z–A, Size, Compatibility, Platform, Installation status), and "Installed" badges.
+  - Added asynchronous, disk-cached game icons in the NSP/NUP list (sourced from installed apps, local builds, embedded `.nup` headers, and TitleDB).
+  - Conversions from external sources run inside a local temporary symlink staging folder so external drives are never modified; trash/delete actions are disabled in read-only mode.
+- **Quit Confirmation Guard**:
+  - Warns before quitting NXNative Hub while a single build or batch conversion is still running, with an option to cancel cleanly or keep running.
+
+### Fixed
+- **Always-Up-to-Date Shader Update / App Update Status**:
+  - Keyed `GameLibraryManager`'s update-status cache on `buildCommit`, `shaderChain`, `repoShaderChain`, `headCommit`, and the newer `mtime` of `.app` and `Contents/Info.plist`, plus explicit cache invalidation on reloads, completed builds, and repo updates.
+  - Automatically refreshes library status when the app becomes active, when a monitored external/background build finishes, or when switching back to the Library tab.
+  - Fixed `GameUpdateChecker` to strip `+dirty` commit suffixes before calling `git` and replaced the invalid `git diff --since=` fallback with `git log --since= --name-only`.
+  - Fixed `GameStatusSheet` to compare commits via prefix matching (12-char `DMCommit` vs. 8-char `HEAD`) and read live game state from the library.
+
+## [1.6.0] – 2026-11-21
+
+### Added
+- Game icons are kept: the library backs up each installed app's icon to `~/Library/Application Support/nxnative/<title ID>/icon.png`, and every build the app starts (builder, direct update, batch import) passes it as `--fallback-icon`. An update from a NUP or dump without an icon keeps the game's icon instead of a blank one.
+- Icon search at Nintendo: when neither the game files nor an installed app have an icon, NXNative Hub loads the square store image by the title ID (`ec.nintendo.com/apps/<title ID>`), Switch and Switch 2. Only the title ID is sent; can be turned off in Settings.
+
+### Changed
+- The live log shows "no game icon … blank" as a warning.
+
+## [1.5.1] – 2026-11-20
+
+### Added
+- "Cancel Build…" in the live log, with a confirmation: stops a build started in the app, the batch import, or a build started in Terminal (SIGTERM, which stops the running tool's whole process group). A Terminal build that ended stays in the live log with its outcome.
+
+## [1.5.0] – 2026-11-20
+
+### Changed
+- Redesigned live log: header with the current step, count, progress bar, elapsed time and ETA; a list of the build's steps with their state and duration; the log filtered to what matters ("Important" hides the repeated progress lines, "All", "Problems"), with search and a Copy button. Works for builds started in the app, the batch import and Terminal (`--progress lines` or `json`).
+
+## [1.4.2] – 2026-11-20
+
+### Changed
+- Starting a build with less free space than estimated now asks first ("Build Anyway" / "Cancel") instead of only showing a warning; the direct update and recompile action in the library asks the same.
+
+### Fixed
+- The live log of a build started in Terminal shows that build's output (also with `| tee file.log` or `> file.log`) instead of an earlier build's log.
 
 ## [1.4.1] – 2026-11-17
 
